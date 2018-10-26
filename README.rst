@@ -2,6 +2,11 @@ OpenAI Gym (extended)
 **********
 This fork extends OpenAI Gym with some custom environments designed to experiment with policy parameterization.
 
+
+.. code:: shell
+
+    pip install git+https://github.com/carlo-/gym.git
+
 ----
 
 **OpenAI Gym is a toolkit for developing and comparing reinforcement learning algorithms.** This is the ``gym`` open-source library, which gives you access to a standardized set of environments.
