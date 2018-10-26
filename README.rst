@@ -7,6 +7,11 @@ This fork extends OpenAI Gym with some custom environments designed to experimen
 
     pip install git+https://github.com/carlo-/gym.git
 
+Custom environments currently implemented:
+
+- ``GaussianPendulum-v0`` from ``Pendulum``
+- ``FetchPickAndPlaceSphere-v1`` from ``FetchPickAndPlace``
+
 ----
 
 **OpenAI Gym is a toolkit for developing and comparing reinforcement learning algorithms.** This is the ``gym`` open-source library, which gives you access to a standardized set of environments.
