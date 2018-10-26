@@ -14,7 +14,9 @@
         <material name="robot0:head_mat" shininess="0.03" specular="0.4" reflectance="0"></material>
         <material name="robot0:torso_mat" shininess="0.03" specular="0.4" reflectance="0"></material>
         <material name="robot0:base_mat" shininess="0.03" specular="0.4" reflectance="0"></material>
+        <material name="sphere_mat" shininess="0.5" specular="0" reflectance="0" rgba="0.1 0.9 0.1 1"></material>
         
+        <mesh file="sphere.stl" name="sphere_mesh" scale="0.02 0.02 0.02"></mesh>
         <mesh file="base_link_collision.stl" name="robot0:base_link"></mesh>
         <mesh file="bellows_link_collision.stl" name="robot0:bellows_link"></mesh>
         <mesh file="elbow_flex_link_collision.stl" name="robot0:elbow_flex_link"></mesh>
