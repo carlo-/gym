@@ -118,6 +118,7 @@ class GaussianPendulumEnv(PendulumEnv):
         self.mass_stdev_ranges = None
         self.embed_knowledge = False
         self.perfect_knowledge = False
+        self.configure()
 
     def configure(self, seed=None, mass_mean=1.0, mass_stdev=0.0, embed_knowledge=False, sample_props_at_step=False,
                   perfect_knowledge=False, gym_env=None, **kwargs):
