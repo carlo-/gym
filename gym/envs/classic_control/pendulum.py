@@ -33,8 +33,14 @@ class PendulumEnv(gym.Env):
         self.mass_distr = lambda: 1.
         self.length_distr = lambda: 1.
 
-        self.physical_props = (0, 0, 0)
+        self.sampled_mass = None
+        self.sampled_gravity = None
+        self.sampled_length = None
         self.sample_physical_props_at_step = False
+
+    @property
+    def physical_props(self):
+        return self.sampled_gravity, self.sampled_mass, self.sampled_length
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -62,10 +68,9 @@ class PendulumEnv(gym.Env):
         return self._get_obs(), -costs, False, {}
 
     def _change_physical_props(self):
-        g = max(self.gravity_distr(), 0.001)
-        m = max(self.mass_distr(), 0.001)
-        l = max(self.length_distr(), 0.001)
-        self.physical_props = (g, m, l)
+        self.sampled_gravity = max(self.gravity_distr(), 0.001)
+        self.sampled_mass = max(self.mass_distr(), 0.001)
+        self.sampled_length = max(self.length_distr(), 0.001)
 
     def reset(self):
         self._change_physical_props()
