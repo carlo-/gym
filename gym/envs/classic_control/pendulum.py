@@ -171,7 +171,8 @@ class GaussianPendulumEnv(PendulumEnv):
         mass_stdev_range = self.mass_stdev_ranges[mass_stdev_range_i]
 
         mass_mean = np_random.uniform(*mass_mean_range)
-        while True:
+        mass_stdev = 0.0
+        for _ in range(5):
             mass_stdev = np_random.uniform(*mass_stdev_range)
             if mass_stdev == 0.0:
                 break
