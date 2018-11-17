@@ -25,6 +25,7 @@ class RobotEnv(gym.GoalEnv):
         self.sim = mujoco_py.MjSim(model, nsubsteps=n_substeps)
         self.viewer = None
         self.offscreen_gcontext = None
+        self._mocap_bodies_visible = True
 
         self.metadata = {
             'render.modes': ['human', 'rgb_array'],
@@ -47,6 +48,28 @@ class RobotEnv(gym.GoalEnv):
     @property
     def dt(self):
         return self.sim.model.opt.timestep * self.sim.nsubsteps
+
+    @property
+    def mocap_bodies_visible(self):
+        return self._mocap_bodies_visible
+
+    @mocap_bodies_visible.setter
+    def mocap_bodies_visible(self, visible):
+        # method from:
+        # https://github.com/openai/mujoco-py/blob/a9f563cbb81d45f2379c6bcc4a4cd73fac09c4be/mujoco_py/mjviewer.py#L353
+        if self._mocap_bodies_visible == visible:
+            return
+        for body_idx1, val in enumerate(self.sim.model.body_mocapid):
+            if val == -1:
+                continue
+            for geom_idx, body_idx2 in enumerate(self.sim.model.geom_bodyid):
+                if body_idx1 == body_idx2:
+                    if visible:
+                        self.sim.model.geom_rgba[geom_idx, 3] = self.sim.extras[geom_idx]
+                    else:
+                        self.sim.extras[geom_idx] = self.sim.model.geom_rgba[geom_idx, 3]
+                        self.sim.model.geom_rgba[geom_idx, 3] = 0
+        self._mocap_bodies_visible = visible
 
     # Env methods
     # ----------------------------
