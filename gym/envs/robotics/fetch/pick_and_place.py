@@ -1,5 +1,11 @@
+import os
 from gym import utils
 from gym.envs.robotics import fetch_env
+
+
+# Ensure we get the path separator correct on windows
+MODEL_XML_PATH = os.path.join('fetch', 'pick_and_place.xml')
+SPHERE_MODEL_XML_PATH = os.path.join('fetch', 'pick_and_place_sphere.xml')
 
 
 class FetchPickAndPlaceEnv(fetch_env.FetchEnv, utils.EzPickle):
@@ -16,7 +22,7 @@ class FetchPickAndPlaceEnv(fetch_env.FetchEnv, utils.EzPickle):
         if custom_xml is not None and isinstance(custom_xml, str):
             xml_path = custom_xml
         else:
-            xml_path = 'fetch/pick_and_place.xml'
+            xml_path = MODEL_XML_PATH
 
         fetch_env.FetchEnv.__init__(
             self, xml_path, has_object=True, block_gripper=False, n_substeps=20,
@@ -28,5 +34,5 @@ class FetchPickAndPlaceEnv(fetch_env.FetchEnv, utils.EzPickle):
 
 class FetchPickAndPlaceSphereEnv(FetchPickAndPlaceEnv):
     def __init__(self, reward_type='sparse'):
-        xml_path = 'fetch/pick_and_place_sphere.xml'
+        xml_path = SPHERE_MODEL_XML_PATH
         super().__init__(reward_type=reward_type, custom_xml=xml_path)
