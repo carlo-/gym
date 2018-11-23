@@ -37,6 +37,7 @@ class PendulumEnv(gym.Env):
         self.sampled_gravity = None
         self.sampled_length = None
         self.sample_physical_props_at_step = False
+        self.length_scale = 1.0
 
     @property
     def physical_props(self):
@@ -104,6 +105,8 @@ class PendulumEnv(gym.Env):
 
         self.viewer.add_onetime(self.img)
         self.pole_transform.set_rotation(self.state[0] + np.pi/2)
+        self.pole_transform.set_scale(self.length_scale, 1.0)
+
         if self.last_u:
             self.imgtrans.scale = (-self.last_u/2, np.abs(self.last_u)/2)
 
