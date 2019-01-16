@@ -11,6 +11,7 @@ Custom environments currently implemented:
 
 - ``GaussianPendulum-v0`` from ``Pendulum``
 - ``FetchPickAndPlaceSphere-v1`` from ``FetchPickAndPlace``
+- ``HandPickAndPlace-v0`` from ``HandManipulateEgg``
 
 ----
 
