@@ -8,3 +8,4 @@ from gym.envs.robotics.hand.reach import HandReachEnv
 from gym.envs.robotics.hand.manipulate import HandBlockEnv
 from gym.envs.robotics.hand.manipulate import HandEggEnv
 from gym.envs.robotics.hand.manipulate import HandPenEnv
+from gym.envs.robotics.hand.pick_and_place import HandPickAndPlaceEnv

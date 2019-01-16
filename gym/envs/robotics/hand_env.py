@@ -9,18 +9,24 @@ from gym.envs.robotics import robot_env
 
 
 class HandEnv(robot_env.RobotEnv):
-    def __init__(self, model_path, n_substeps, initial_qpos, relative_control):
+    def __init__(self, model_path, n_substeps, initial_qpos, relative_control, arm_control=False):
+
         self.relative_control = relative_control
+        self.arm_control = arm_control
+
+        n_actions = 20
+        if arm_control:
+            n_actions += 6
 
         super(HandEnv, self).__init__(
-            model_path=model_path, n_substeps=n_substeps, n_actions=20,
+            model_path=model_path, n_substeps=n_substeps, n_actions=n_actions,
             initial_qpos=initial_qpos)
 
     # RobotEnv methods
     # ----------------------------
 
     def _set_action(self, action):
-        assert action.shape == (20,)
+        assert action.shape == self.action_space.shape
 
         ctrlrange = self.sim.model.actuator_ctrlrange
         actuation_range = (ctrlrange[:, 1] - ctrlrange[:, 0]) / 2.
