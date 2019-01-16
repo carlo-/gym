@@ -1,6 +1,6 @@
 OpenAI Gym (extended)
 **********
-This fork extends OpenAI Gym with some custom environments designed to experiment with policy parameterization.
+This fork extends OpenAI Gym with some custom environments designed for various projects.
 
 
 .. code:: shell
