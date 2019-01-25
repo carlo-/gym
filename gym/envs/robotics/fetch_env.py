@@ -43,7 +43,7 @@ class FetchEnv(robot_env.RobotEnv):
         self.target_range = target_range
         self.distance_threshold = distance_threshold
         self.reward_type = reward_type
-        self.simplified_reward = False
+        self.reward_params = None
 
         super(FetchEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
@@ -91,7 +91,11 @@ class FetchEnv(robot_env.RobotEnv):
         # Compute distance between goal and the achieved goal.
         d = goal_distance(achieved_goal, goal)
 
-        if self.simplified_reward and self.has_object:
+        if self.reward_params is not None and self.has_object:
+
+            min_dist = self.reward_params.get('min_dist', 0.03)
+            c = self.reward_params.get('c', 0.5)
+            k = self.reward_params.get('k', 2.0)
 
             # object and gripper positions
             obj_pos = achieved_goal # type: np.ndarray
@@ -99,8 +103,8 @@ class FetchEnv(robot_env.RobotEnv):
 
             # desired gripper position and distance to this goal
             grp_goal_d = goal_distance(grp_pos, obj_pos)
-            if grp_goal_d > 0.03:
-                d += grp_goal_d
+            if grp_goal_d > min_dist:
+                d += (grp_goal_d ** k) * c
 
         if self.reward_type == 'sparse':
             return -(d > self.distance_threshold).astype(np.float32)
@@ -169,7 +173,7 @@ class FetchEnv(robot_env.RobotEnv):
             'desired_goal': self.goal.copy(),
         }
 
-        if self.simplified_reward:
+        if self.reward_params is not None:
             obs_dict['info'] = {'gripper_pos': grip_pos.copy()}
         return obs_dict
 
