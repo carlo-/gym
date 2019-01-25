@@ -76,43 +76,23 @@ def main():
     global selected_action
     p = Thread(target=action_thread)
     p.start()
+    selected_action = np.zeros(4)
 
     while True:
 
         env.reset()
 
-        for s in it.count():
+        for _ in it.count():
 
             env.render()
             action = selected_action.copy()
             obs, rew, done, info = env.step(action)
-            print(rew)
 
             selected_action[:3] *= 0.0
             sleep(1/60)
 
-            if s % 60 != 0:
-                continue
-
-            # From: https://gist.github.com/machinaut/209c44e8c55245c0d0f0094693053158
-            for i in range(sim.data.ncon):
-                # Note that the contact array has more than `ncon` entries,
-                # so be careful to only read the valid entries.
-                contact = sim.data.contact[i]
-                body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
-                body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
-
-                if body_name_1 == 'object0' or body_name_2 == 'object0':
-                    print('Contact', i)
-                    print('geom1', contact.geom1, body_name_1)
-                    print('geom2', contact.geom2, body_name_2)
-
-                    geom2_body = sim.model.geom_bodyid[sim.data.contact[i].geom2]
-                    print('Total force exerted on geom2 body', sim.data.cfrc_ext[geom2_body])
-
-                    c_force = np.zeros(6, dtype=np.float64)
-                    mujoco_py.functions.mj_contactForce(sim.model, sim.data, i, c_force)
-                    print('Contact force', c_force)
+            print(rew)
+            print(raw_env.get_object_contact_points())
 
 
 if __name__ == '__main__':

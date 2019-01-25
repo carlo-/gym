@@ -1,3 +1,4 @@
+import mujoco_py
 import numpy as np
 
 from gym.envs.robotics import rotations, robot_env, utils
@@ -47,6 +48,41 @@ class FetchEnv(robot_env.RobotEnv):
         super(FetchEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
             initial_qpos=initial_qpos)
+
+    def get_object_contact_points(self):
+        if not self.has_object:
+            raise NotImplementedError("Cannot get object contact points in an environment without objects!")
+
+        sim = self.sim
+        object_name = 'object0'
+        object_pos = self.sim.data.get_site_xpos(object_name)
+        object_rot = self.sim.data.get_site_xmat(object_name)
+        contact_points = []
+
+        # Partially from: https://gist.github.com/machinaut/209c44e8c55245c0d0f0094693053158
+        for i in range(sim.data.ncon):
+            # Note that the contact array has more than `ncon` entries,
+            # so be careful to only read the valid entries.
+            contact = sim.data.contact[i]
+            body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
+            body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
+
+            if body_name_1.startswith('robot0:') and body_name_2 == object_name:
+
+                c_force = np.zeros(6, dtype=np.float64)
+                mujoco_py.functions.mj_contactForce(sim.model, sim.data, i, c_force)
+
+                # Compute contact point position wrt the object
+                rel_contact_pos = object_rot.T @ (contact.pos - object_pos)
+
+                contact_points.append(dict(
+                    body1=body_name_1,
+                    body2=body_name_2,
+                    relative_pos=rel_contact_pos,
+                    force=c_force
+                ))
+
+        return contact_points
 
     # GoalEnv methods
     # ----------------------------
