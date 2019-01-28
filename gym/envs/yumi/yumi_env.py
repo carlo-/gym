@@ -1,5 +1,7 @@
 import os
+from pathlib import Path
 
+import mujoco_py
 import numpy as np
 from gym import utils, spaces
 from gym.envs.mujoco import mujoco_env
@@ -36,34 +38,81 @@ def body_frame(env, body_name):
     return R
 
 
-class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+class YumiEnv(mujoco_env.MujocoEnv):
 
-    def __init__(self, arm='right'):
+    # noinspection PyMissingConstructor
+    def __init__(self, arm='right', block_gripper=True):
 
         if arm not in ['right', 'left', 'both']:
-            raise NotImplementedError
+            raise ValueError
         self.arm = arm
 
-        high = np.array([40, 35, 30, 20, 15, 10, 10])
-        dof = 7
+        if not block_gripper:
+            raise NotImplementedError
 
+        self._gripper_r_joint_idx = None
+        self._gripper_l_joint_idx = None
+        self._arm_r_joint_idx = None
+        self._arm_l_joint_idx = None
+
+        high = np.array([40, 35, 30, 20, 15, 10, 10]) * 10
+        if not block_gripper:
+            high = np.r_[high, 1.0]
         if arm == 'both':
             high = np.r_[high, high]
-            dof *= 2
 
         self.high = high
         self.low = -self.high
-        self.wt = 0.0
-        self.we = 0.0
+        self.wt = 0.9
+        self.we = 1 - self.wt
 
-        # Manually define this to let a be in [-1, 1]^d
-        self.action_space = spaces.Box(low=-np.ones(dof) * 2, high=np.ones(dof) * 2, dtype=np.float32)
-
+        ################################### Mujoco env init ###################################
         root_dir = os.path.dirname(__file__)
         xml_path = os.path.join(root_dir, 'assets', f'yumi_{arm}.xml')
-        mujoco_env.MujocoEnv.__init__(self, xml_path, 1)
-        utils.EzPickle.__init__(self)
-        self.init_params()
+        if not Path(xml_path).exists():
+            raise IOError(f'File {xml_path} does not exist')
+        self.frame_skip = 1
+        self.model = mujoco_py.load_model_from_path(xml_path)
+        self.sim = mujoco_py.MjSim(self.model)
+        self.data = self.sim.data
+        self.viewer = None
+        self._viewers = {}
+
+        self.metadata = {
+            'render.modes': ['human', 'rgb_array', 'depth_array'],
+            'video.frames_per_second': int(np.round(1.0 / self.dt))
+        }
+
+        self.init_qpos = self.sim.data.qpos.ravel().copy()
+        self.init_qvel = self.sim.data.qvel.ravel().copy()
+        #######################################################################################
+
+        yumi_arm_joints = [1, 2, 7, 3, 4, 5, 6]
+        if self.has_right_arm:
+            self._arm_r_joint_idx = [self.sim.model.joint_name2id(f'yumi_joint_{i}_r') for i in yumi_arm_joints]
+        if self.has_left_arm:
+            self._arm_l_joint_idx = [self.sim.model.joint_name2id(f'yumi_joint_{i}_l') for i in yumi_arm_joints]
+
+        if not block_gripper:
+            if self.has_right_arm:
+                self._gripper_r_joint_idx = [self.sim.model.joint_name2id('gripper_r_joint'),
+                                             self.sim.model.joint_name2id('gripper_r_joint_m')]
+            if self.has_left_arm:
+                self._gripper_l_joint_idx = [self.sim.model.joint_name2id('gripper_l_joint'),
+                                             self.sim.model.joint_name2id('gripper_l_joint_m')]
+
+        self.obs_dim = self._get_obs().size
+        self.action_space = spaces.Box(low=-np.ones(high.size), high=np.ones(high.size), dtype=np.float32)
+        self.observation_space = spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
+        self.seed()
+
+    @property
+    def has_right_arm(self):
+        return self.arm == 'right' or self.arm == 'both'
+
+    @property
+    def has_left_arm(self):
+        return self.arm == 'left' or self.arm == 'both'
 
     @property
     def _gripper_base(self):
@@ -76,28 +125,19 @@ class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         else:
             return l_base
 
-    def init_params(self, wt=0.9, x=0.0, y=0.0, z=0.2):
-        """
-        :param wt: Float in range (0, 1), weight on euclidean loss
-        :param x, y, z: Position of goal
-        """
-        self.wt = wt
-        self.we = 1 - wt
-        qpos = self.init_qpos
-        qpos[-3:] = [x, y, z]
-        qvel = self.init_qvel
-        self.set_state(qpos, qvel)
+    def _set_action(self, a):
+        a = np.clip(a, self.action_space.low, self.action_space.high)
+        a_real = a * self.high
+        self.do_simulation(a_real, self.frame_skip)
+        return a_real
 
     def step(self, a):
-        a_real = a * self.high / 2
-        self.do_simulation(a_real, self.frame_skip)
+        a_real = self._set_action(a)
         if self.arm == 'both':
             reward = self._reward(a_real, self._gripper_base[0]) + self._reward(a_real, self._gripper_base[1])
         else:
             reward = self._reward(a_real)
-        done = False
-        ob = self._get_obs()
-        return ob, reward, done, {}
+        return self._get_obs(), reward, False, {}
 
     def _reward(self, a, gripper_base=None):
 
@@ -123,18 +163,60 @@ class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         return reward
 
     def _get_obs(self):
-        return np.concatenate([
-            self.sim.data.qpos.flat[:7],
-            np.clip(self.sim.data.qvel.flat[:7], -10, 10)
+
+        arm_l_qpos = np.zeros(0)
+        arm_l_qvel = np.zeros(0)
+        gripper_l_qpos = np.zeros(0)
+
+        arm_r_qpos = np.zeros(0)
+        arm_r_qvel = np.zeros(0)
+        gripper_r_qpos = np.zeros(0)
+
+        if self._arm_l_joint_idx is not None:
+            arm_l_qpos = self.sim.data.qpos[self._arm_l_joint_idx]
+            arm_l_qvel = self.sim.data.qvel[self._arm_l_joint_idx]
+            arm_l_qvel = np.clip(arm_l_qvel, -10, 10)
+
+        if self._gripper_l_joint_idx is not None:
+            gripper_l_qpos = self.sim.data.qpos[self._gripper_l_joint_idx]
+
+        if self._arm_r_joint_idx is not None:
+            arm_r_qpos = self.sim.data.qpos[self._arm_r_joint_idx]
+            arm_r_qvel = self.sim.data.qvel[self._arm_r_joint_idx]
+            arm_r_qvel = np.clip(arm_r_qvel, -10, 10)
+
+        if self._gripper_r_joint_idx is not None:
+            gripper_r_qpos = self.sim.data.qpos[self._gripper_r_joint_idx]
+
+        obs = np.concatenate([
+            arm_l_qpos, arm_l_qvel, gripper_l_qpos,
+            arm_r_qpos, arm_r_qvel, gripper_r_qpos
         ])
 
+        return obs
+
     def reset_model(self):
-        pos_low  = np.array([-1.0,-0.3,-0.4,-0.4,-0.3,-0.3,-0.3])
-        pos_high = np.array([ 0.4, 0.6, 0.4, 0.4, 0.3, 0.3, 0.3])
-        self.init_qpos[:7] = np.random.uniform(pos_low, pos_high)
+        pos_low = np.r_[-1.0, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
+        pos_high = np.r_[0.4,  0.6,  0.4,  0.4,  0.3,  0.3,  0.3]
         vel_high = np.ones(7) * 0.5
         vel_low = -vel_high
-        self.init_qvel[:7] = np.random.uniform(vel_low, vel_high)
+
+        if self._arm_l_joint_idx is not None:
+            self.init_qpos[self._arm_l_joint_idx] = np.random.uniform(pos_low, pos_high)
+            self.init_qvel[self._arm_l_joint_idx] = np.random.uniform(vel_low, vel_high)
+
+        if self._gripper_l_joint_idx is not None:
+            self.init_qpos[self._gripper_l_joint_idx] = 0.0
+            self.init_qvel[self._gripper_l_joint_idx] = 0.0
+
+        if self._arm_r_joint_idx is not None:
+            self.init_qpos[self._arm_r_joint_idx] = np.random.uniform(pos_low, pos_high)
+            self.init_qvel[self._arm_r_joint_idx] = np.random.uniform(vel_low, vel_high)
+
+        if self._gripper_r_joint_idx is not None:
+            self.init_qpos[self._gripper_r_joint_idx] = 0.0
+            self.init_qvel[self._gripper_r_joint_idx] = 0.0
+
         self.set_state(self.init_qpos, self.init_qvel)
         return self._get_obs()
 
@@ -144,16 +226,19 @@ class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.azimuth = 180
 
 
-class YumiRightArmEnv(YumiEnv):
+class YumiRightArmEnv(YumiEnv, utils.EzPickle):
     def __init__(self):
         super().__init__(arm='right')
+        utils.EzPickle.__init__(self)
 
 
-class YumiLeftArmEnv(YumiEnv):
+class YumiLeftArmEnv(YumiEnv, utils.EzPickle):
     def __init__(self):
         super().__init__(arm='left')
+        utils.EzPickle.__init__(self)
 
 
-class YumiTwoArmsEnv(YumiEnv):
+class YumiTwoArmsEnv(YumiEnv, utils.EzPickle):
     def __init__(self):
         super().__init__(arm='both')
+        utils.EzPickle.__init__(self)
