@@ -1,0 +1,20 @@
+<mujoco>
+    <compiler angle="radian" meshdir="./stls" />
+    <option timestep="0.01" integrator="Euler" />
+    <size njmax="500" nconmax="100" />
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.44 0.85 0.56" rgb2="0.46 0.87 0.58" width="32" height="32"/>
+
+        <mesh name="coarse_body" file="coarse_body.stl" />
+        <mesh name="coarse_link_1" file="coarse_link_1.stl" />
+        <mesh name="coarse_link_2" file="coarse_link_2.stl" />
+        <mesh name="coarse_link_3" file="coarse_link_3.stl" />
+        <mesh name="coarse_link_4" file="coarse_link_4.stl" />
+        <mesh name="coarse_link_5" file="coarse_link_5.stl" />
+        <mesh name="coarse_link_6" file="coarse_link_6.stl" />
+        <mesh name="coarse_link_7" file="coarse_link_7.stl" />
+        <mesh name="base" file="base.stl" />
+        <mesh name="finger" file="finger.stl" />
+    </asset>
+</mujoco>

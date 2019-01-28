@@ -38,19 +38,43 @@ def body_frame(env, body_name):
 
 class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
-    def __init__(self):
-        self.high = np.array([40, 35, 30, 20, 15, 10, 10])
+    def __init__(self, arm='right'):
+
+        if arm not in ['right', 'left', 'both']:
+            raise NotImplementedError
+        self.arm = arm
+
+        high = np.array([40, 35, 30, 20, 15, 10, 10])
+        dof = 7
+
+        if arm == 'both':
+            high = np.r_[high, high]
+            dof *= 2
+
+        self.high = high
         self.low = -self.high
         self.wt = 0.0
         self.we = 0.0
-        root_dir = os.path.dirname(__file__)
-        xml_path = os.path.join(root_dir, 'assets', 'yumi_right.xml')
-        mujoco_env.MujocoEnv.__init__(self, xml_path, 1)
-        utils.EzPickle.__init__(self)
 
         # Manually define this to let a be in [-1, 1]^d
-        self.action_space = spaces.Box(low=-np.ones(7) * 2, high=np.ones(7) * 2, dtype=np.float32)
+        self.action_space = spaces.Box(low=-np.ones(dof) * 2, high=np.ones(dof) * 2, dtype=np.float32)
+
+        root_dir = os.path.dirname(__file__)
+        xml_path = os.path.join(root_dir, 'assets', f'yumi_{arm}.xml')
+        mujoco_env.MujocoEnv.__init__(self, xml_path, 1)
+        utils.EzPickle.__init__(self)
         self.init_params()
+
+    @property
+    def _gripper_base(self):
+        r_base = 'gripper_r_base'
+        l_base = 'gripper_l_base'
+        if self.arm == 'both':
+            return l_base, r_base
+        elif self.arm == 'right':
+            return r_base
+        else:
+            return l_base
 
     def init_params(self, wt=0.9, x=0.0, y=0.0, z=0.2):
         """
@@ -67,13 +91,20 @@ class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def step(self, a):
         a_real = a * self.high / 2
         self.do_simulation(a_real, self.frame_skip)
-        reward = self._reward(a_real)
+        if self.arm == 'both':
+            reward = self._reward(a_real, self._gripper_base[0]) + self._reward(a_real, self._gripper_base[1])
+        else:
+            reward = self._reward(a_real)
         done = False
         ob = self._get_obs()
         return ob, reward, done, {}
 
-    def _reward(self, a):
-        eef = self.get_body_com('gripper_r_base')
+    def _reward(self, a, gripper_base=None):
+
+        gripper_base = gripper_base or self._gripper_base
+        assert isinstance(gripper_base, str)
+        eef = self.get_body_com(gripper_base)
+
         goal = self.get_body_com('goal')
         goal_distance = np.linalg.norm(eef - goal)
         # This is the norm of the joint angles
@@ -111,3 +142,18 @@ class YumiEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = 2.0
         self.viewer.cam.elevation = -30
         self.viewer.cam.azimuth = 180
+
+
+class YumiRightArmEnv(YumiEnv):
+    def __init__(self):
+        super().__init__(arm='right')
+
+
+class YumiLeftArmEnv(YumiEnv):
+    def __init__(self):
+        super().__init__(arm='left')
+
+
+class YumiTwoArmsEnv(YumiEnv):
+    def __init__(self):
+        super().__init__(arm='both')

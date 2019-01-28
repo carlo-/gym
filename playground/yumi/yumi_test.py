@@ -7,7 +7,7 @@ import gym
 
 
 def main():
-    env = gym.make('Yumi-v0')
+    env = gym.make('YumiRightArm-v0')
     env.reset()
 
     sim = env.unwrapped.sim

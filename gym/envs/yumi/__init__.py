@@ -1,1 +1,1 @@
-from .yumi_env import YumiEnv
+from .yumi_env import YumiLeftArmEnv, YumiRightArmEnv, YumiTwoArmsEnv

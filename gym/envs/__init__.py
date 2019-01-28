@@ -452,8 +452,22 @@ for reward_type in ['sparse', 'dense']:
 # ----------------------------------------
 
 register(
-    id='Yumi-v0',
-    entry_point='gym.envs.yumi:YumiEnv',
+    id='YumiRightArm-v0',
+    entry_point='gym.envs.yumi:YumiRightArmEnv',
+    max_episode_steps=1000,
+    reward_threshold=25.0,
+)
+
+register(
+    id='YumiLeftArm-v0',
+    entry_point='gym.envs.yumi:YumiLeftArmEnv',
+    max_episode_steps=1000,
+    reward_threshold=25.0,
+)
+
+register(
+    id='YumiTwoArms-v0',
+    entry_point='gym.envs.yumi:YumiTwoArmsEnv',
     max_episode_steps=1000,
     reward_threshold=25.0,
 )
