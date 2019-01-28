@@ -448,6 +448,16 @@ for reward_type in ['sparse', 'dense']:
         max_episode_steps=100,
     )
 
+# YuMi
+# ----------------------------------------
+
+register(
+    id='Yumi-v0',
+    entry_point='gym.envs.yumi:YumiEnv',
+    max_episode_steps=1000,
+    reward_threshold=25.0,
+)
+
 # Atari
 # ----------------------------------------
 
