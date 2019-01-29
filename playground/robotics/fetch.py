@@ -7,32 +7,9 @@ import mujoco_py
 import gym
 from gym.envs.robotics import FetchEnv
 
+from playground.utils import wait_for_key
 
 selected_action = np.zeros(4)
-
-
-def wait_for_key():
-    # From: https://stackoverflow.com/a/34956791
-
-    import sys
-    import termios
-
-    result = None
-    fd = sys.stdin.fileno()
-
-    old_term = termios.tcgetattr(fd)
-    new_attr = termios.tcgetattr(fd)
-    new_attr[3] = new_attr[3] & ~termios.ICANON & ~termios.ECHO
-    termios.tcsetattr(fd, termios.TCSANOW, new_attr)
-
-    try:
-        result = sys.stdin.read(1)
-    except IOError:
-        pass
-    finally:
-        termios.tcsetattr(fd, termios.TCSAFLUSH, old_term)
-
-    return result
 
 
 def action_from_key():

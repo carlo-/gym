@@ -1,6 +1,10 @@
 <mujoco>
     <include file="shared.xml" />
 
+    <contact>
+        <exclude body1="gripper_r_finger_r" body2="gripper_r_finger_l"/>
+    </contact>
+
     <worldbody>
         <geom rgba="1 1 1 1" name="table" type="box" pos="0 0 -0.01" size="0.4 0.5 0.01"/>
 
@@ -31,5 +35,8 @@
         <motor joint="yumi_joint_4_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
         <motor joint="yumi_joint_5_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
         <motor joint="yumi_joint_6_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+
+        <position joint="gripper_r_joint" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
+		<position joint="gripper_r_joint_m" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
     </actuator>
 </mujoco>

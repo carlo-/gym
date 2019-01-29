@@ -5,6 +5,7 @@ import mujoco_py
 import numpy as np
 from gym import utils, spaces
 from gym.envs.mujoco import mujoco_env
+from gym.envs.robotics.utils import ctrl_set_action
 
 
 def body_index(model, body_name):
@@ -41,7 +42,7 @@ def body_frame(env, body_name):
 class YumiEnv(mujoco_env.MujocoEnv):
 
     # noinspection PyMissingConstructor
-    def __init__(self, arm='right', block_gripper=True):
+    def __init__(self, arm='right', block_gripper=False):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -50,14 +51,16 @@ class YumiEnv(mujoco_env.MujocoEnv):
         if not block_gripper:
             raise NotImplementedError
 
+        self.block_gripper = block_gripper
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
         self._arm_r_joint_idx = None
         self._arm_l_joint_idx = None
 
+        self._gripper_joint_max = 0.02
         high = np.array([40, 35, 30, 20, 15, 10, 10]) * 10
         if not block_gripper:
-            high = np.r_[high, 1.0]
+            high = np.r_[high, self._gripper_joint_max]
         if arm == 'both':
             high = np.r_[high, high]
 
@@ -115,6 +118,10 @@ class YumiEnv(mujoco_env.MujocoEnv):
         return self.arm == 'left' or self.arm == 'both'
 
     @property
+    def has_two_arms(self):
+        return self.arm == 'both'
+
+    @property
     def _gripper_base(self):
         r_base = 'gripper_r_base'
         l_base = 'gripper_l_base'
@@ -127,9 +134,25 @@ class YumiEnv(mujoco_env.MujocoEnv):
 
     def _set_action(self, a):
         a = np.clip(a, self.action_space.low, self.action_space.high)
-        a_real = a * self.high
-        self.do_simulation(a_real, self.frame_skip)
-        return a_real
+        a *= self.high
+
+        if not self.block_gripper:
+            arm1_a = a[:8]
+            arm2_a = a[8:]
+            gripper1_a = arm1_a[7:]
+            gripper2_a = arm2_a[7:]
+            a = np.r_[arm1_a, gripper1_a, arm2_a, gripper2_a]
+        else:
+            arm1_a = a[:7]
+            arm2_a = a[7:]
+            g = self._gripper_joint_max
+            a = np.r_[arm1_a, g, g]
+            if self.has_two_arms:
+                a = np.r_[a, arm2_a, g, g]
+
+        ctrl_set_action(self.sim, a)
+        self.sim.step()
+        return a
 
     def step(self, a):
         a_real = self._set_action(a)
@@ -216,6 +239,9 @@ class YumiEnv(mujoco_env.MujocoEnv):
         if self._gripper_r_joint_idx is not None:
             self.init_qpos[self._gripper_r_joint_idx] = 0.0
             self.init_qvel[self._gripper_r_joint_idx] = 0.0
+
+        self.init_qpos *= 0.0
+        self.init_qvel *= 0.0
 
         self.set_state(self.init_qpos, self.init_qvel)
         return self._get_obs()

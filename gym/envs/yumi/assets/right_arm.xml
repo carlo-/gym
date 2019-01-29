@@ -30,15 +30,17 @@
                                 <body name="gripper_r_base" pos="0 0 0.007" quat="0 0 0 1">
                                     <inertial pos="0 0 0" mass="0.2" diaginertia="0.0001 0.0001 0.0001" />
                                     <geom type="mesh" rgba="0.8 0.8 0.8 1" mesh="base" />
-                                    <body name="gripper_r_finger_r" pos="0 -0.0065 0.0837">
-                                        <inertial pos="0 0 0" mass="0.01" diaginertia="1e-06 1e-06 1e-06" />
-                                        <joint name="gripper_r_joint" pos="0 0 0" axis="-1 0 0" type="slide" limited="true" range="0 0.025" />
-                                        <geom type="mesh" rgba="0.8 0.8 0.8 1" mesh="finger" />
+
+                                    <body name="gripper_r_finger_r" pos="-0.02 -0.0065 0.0837">
+                                        <inertial pos="0 0 0" mass="0.2" diaginertia="0.1 0.1 0.1" />
+                                        <joint name="gripper_r_joint" axis="1 0 0" range="0 0.02" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" type="slide"/>
+                                        <geom type="mesh" rgba="0.9 0.1 0.1 1" mesh="finger" condim="4" friction="1 0.05 0.01"/>
                                     </body>
-                                    <body name="gripper_r_finger_l" pos="0 0.0065 0.0837" quat="0 0 0 1">
-                                        <inertial pos="0 0 0" mass="0.01" diaginertia="1e-06 1e-06 1e-06" />
-                                        <joint name="gripper_r_joint_m" pos="0 0 0" axis="-1 0 0" type="slide" limited="true" range="0 0.025"/>
-                                        <geom type="mesh" rgba="0.8 0.8 0.8 1" mesh="finger"/>
+
+                                    <body name="gripper_r_finger_l" pos="0.02 0.0065 0.0837" quat="0 0 0 1">
+                                        <inertial pos="0 0 0" mass="0.2" diaginertia="0.1 0.1 0.1" />
+                                        <joint name="gripper_r_joint_m" axis="1 0 0" range="0 0.02" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" type="slide"/>
+                                        <geom type="mesh" rgba="0.1 0.9 0.1 1" mesh="finger" condim="4" friction="1 0.05 0.01"/>
                                     </body>
                                 </body>
                             </body>
