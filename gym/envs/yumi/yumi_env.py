@@ -48,9 +48,6 @@ class YumiEnv(mujoco_env.MujocoEnv):
             raise ValueError
         self.arm = arm
 
-        if not block_gripper:
-            raise NotImplementedError
-
         self.block_gripper = block_gripper
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
