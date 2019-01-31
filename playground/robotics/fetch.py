@@ -47,7 +47,7 @@ def action_thread():
 def main():
     env = gym.make('FetchPickAndPlaceDense-v1')
     raw_env = env.unwrapped # type: FetchEnv
-    raw_env.simplified_reward = True
+    raw_env.reward_params = dict(k=1.0, c=1.0, grasp_bonus=2.0)
     sim = raw_env.sim
 
     global selected_action
@@ -68,8 +68,8 @@ def main():
             selected_action[:3] *= 0.0
             sleep(1/60)
 
-            print(rew)
-            print(raw_env.get_object_contact_points())
+            print('rew', rew)
+            # print(raw_env.get_object_contact_points())
 
 
 if __name__ == '__main__':
