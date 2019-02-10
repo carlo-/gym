@@ -15,15 +15,15 @@ except ImportError as e:
 HAND_PICK_AND_PLACE_XML = os.path.join('hand', 'pick_and_place.xml')
 
 
-class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
-    def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False,
+class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
+    def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_position=True, randomize_initial_rotation=True,
                  distance_threshold=0.01, rotation_threshold=0.1, n_substeps=20):
 
         self.object_range = 0.15
         self.target_range = 0.15
         self.target_in_the_air = True
-        self.has_object = True
+        self.has_object = has_object
         self.ignore_target_rotation = False
         self.randomize_initial_rotation = randomize_initial_rotation
         self.randomize_initial_position = randomize_initial_position
@@ -175,6 +175,19 @@ class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
         }
 
 
-class HandPickAndPlaceEnv(_PickAndPlaceEnv):
+class HandPickAndPlaceEnv(MovingHandEnv):
     def __init__(self, reward_type='sparse'):
-        super(HandPickAndPlaceEnv, self).__init__(model_path=HAND_PICK_AND_PLACE_XML, reward_type=reward_type)
+        super(HandPickAndPlaceEnv, self).__init__(
+            model_path=HAND_PICK_AND_PLACE_XML,
+            reward_type=reward_type,
+            has_object=True
+        )
+
+
+class MovingHandReachEnv(MovingHandEnv):
+    def __init__(self, reward_type='sparse'):
+        super(MovingHandReachEnv, self).__init__(
+            model_path=HAND_PICK_AND_PLACE_XML,
+            reward_type=reward_type,
+            has_object=False
+        )

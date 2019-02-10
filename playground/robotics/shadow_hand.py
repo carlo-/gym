@@ -1,4 +1,3 @@
-from time import sleep
 import itertools as it
 
 import numpy as np
@@ -6,7 +5,8 @@ import gym
 
 
 def main():
-    env = gym.make('HandPickAndPlace-v0')
+    # env = gym.make('HandPickAndPlaceDense-v0')
+    env = gym.make('MovingHandReachDense-v0')
     env.reset()
 
     sim = env.unwrapped.sim
@@ -24,8 +24,8 @@ def main():
                 action[-7:] *= 0.0
                 action[20+j] = val
 
-                env.step(action)
-                sleep(1/60)
+                rew = env.step(action)[1]
+                print(rew)
 
 
 if __name__ == '__main__':
