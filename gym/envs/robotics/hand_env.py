@@ -16,7 +16,7 @@ class HandEnv(robot_env.RobotEnv):
 
         n_actions = 20
         if arm_control:
-            n_actions += 6
+            n_actions += 7
 
         super(HandEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=n_actions,
@@ -26,7 +26,7 @@ class HandEnv(robot_env.RobotEnv):
     # ----------------------------
 
     def _set_action(self, action):
-        assert action.shape == self.action_space.shape
+        assert action.shape == self.sim.data.ctrl.shape
 
         ctrlrange = self.sim.model.actuator_ctrlrange
         actuation_range = (ctrlrange[:, 1] - ctrlrange[:, 0]) / 2.

@@ -3,7 +3,7 @@ import numpy as np
 
 from gym import utils, error
 from gym.envs.robotics import rotations, hand_env
-from gym.envs.robotics.utils import robot_get_obs
+from gym.envs.robotics.utils import robot_get_obs, reset_mocap_welds, mocap_set_action
 
 try:
     import mujoco_py
@@ -12,20 +12,11 @@ except ImportError as e:
                                        "and also perform the setup instructions here: "
                                        "https://github.com/openai/mujoco-py/.)".format(e))
 
-
 HAND_PICK_AND_PLACE_XML = os.path.join('hand', 'pick_and_place.xml')
 
 
-def quat_from_angle_and_axis(angle, axis):
-    assert axis.shape == (3,)
-    axis /= np.linalg.norm(axis)
-    quat = np.concatenate([[np.cos(angle / 2.)], np.sin(angle / 2.) * axis])
-    quat /= np.linalg.norm(quat)
-    return quat
-
-
 class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
-    def __init__(self, model_path, reward_type, initial_qpos=None,
+    def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False,
                  randomize_initial_position=True, randomize_initial_rotation=True,
                  distance_threshold=0.01, rotation_threshold=0.1, n_substeps=20):
 
@@ -42,24 +33,19 @@ class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
 
         initial_qpos = initial_qpos or {
             'object:joint': [1.25, 0.53, 0.4, 1., 0., 0., 0.],
-            'robot0:ARM_Tx': 0.405,
-            'robot0:ARM_Ty': 0.48,
-            'robot0:ARM_Tz': 0.0,
-            'robot0:ARM_Rx': np.pi,
         }
 
-        hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos or dict(),
-                                  relative_control=False, arm_control=True)
+        hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos,
+                                  relative_control=relative_control, arm_control=True)
         utils.EzPickle.__init__(self)
 
     def _get_achieved_goal(self):
-        if self.has_object:
-            qpos = self.sim.data.get_joint_qpos('object:joint')
-        else:
-            # FIXME
-            qpos = self.sim.data.get_joint_qpos('robot0:wall_mount')
-        assert qpos.shape == (7,)
-        return qpos.copy()
+        body_name = 'object' if self.has_object else 'robot0:palm'
+        body_pose = np.r_[
+            self.sim.data.get_body_xpos(body_name),
+            self.sim.data.get_body_xquat(body_name)
+        ]
+        return body_pose
 
     def _goal_distance(self, goal_a, goal_b):
         assert goal_a.shape == goal_b.shape
@@ -94,6 +80,13 @@ class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
     # RobotEnv methods
     # ----------------------------
 
+    def _set_action(self, action):
+        assert action.shape == self.action_space.shape
+        hand_ctrl = action[:20]
+        forearm_ctrl = action[20:] * 0.1
+        hand_env.HandEnv._set_action(self, hand_ctrl)
+        mocap_set_action(self.sim, forearm_ctrl)
+
     def _is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray):
         d_pos, d_rot = self._goal_distance(achieved_goal, desired_goal)
         achieved_pos = (d_pos < self.distance_threshold).astype(np.float32)
@@ -104,17 +97,23 @@ class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
     def _env_setup(self, initial_qpos):
         for name, value in initial_qpos.items():
             self.sim.data.set_joint_qpos(name, value)
+        reset_mocap_welds(self.sim)
         self.sim.forward()
 
+        # Move end effector into position.
+        forearm_pos = np.array([1.25, 0.53, 0.6])
+        forearm_quat = np.array([1., 0., 1., 0.])
+        self.sim.data.set_mocap_pos('robot0:mocap', forearm_pos)
+        self.sim.data.set_mocap_quat('robot0:mocap', forearm_quat)
         for _ in range(10):
             self.sim.step()
 
-        self.initial_arm_xpos = self.sim.data.get_site_xpos('robot0:wall_mount:site').copy()
+        self.initial_arm_xpos = self.sim.data.get_body_xpos('robot0:forearm').copy()
         if self.has_object:
             self.height_offset = self.sim.data.get_site_xpos('object:center')[2]
 
     def _viewer_setup(self):
-        body_id = self.sim.model.body_name2id('robot0:wall_mount')
+        body_id = self.sim.model.body_name2id('robot0:forearm')
         lookat = self.sim.data.body_xpos[body_id]
         for idx, value in enumerate(lookat):
             self.viewer.cam.lookat[idx] = value
@@ -129,12 +128,12 @@ class _PickAndPlaceEnv(hand_env.HandEnv, utils.EzPickle):
         if self.has_object:
             object_qpos = self.sim.data.get_joint_qpos('object:joint').copy()
 
-            # object_xpos = self.initial_arm_xpos[:2]
-            # while np.linalg.norm(object_xpos - self.initial_arm_xpos[:2]) < 0.1:
-            #     offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
-            #     object_xpos = self.initial_arm_xpos[:2] + offset
-            #
-            # object_qpos[:2] = object_xpos
+            object_xpos = self.initial_arm_xpos[:2]
+            while np.linalg.norm(object_xpos - self.initial_arm_xpos[:2]) < 0.1:
+                offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
+                object_xpos = self.initial_arm_xpos[:2] + offset
+
+            object_qpos[:2] = object_xpos
             self.sim.data.set_joint_qpos('object:joint', object_qpos)
 
         self.sim.forward()
