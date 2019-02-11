@@ -19,13 +19,13 @@ HAND_MOVE_AND_REACH_XML = os.path.join('hand', 'move_and_reach.xml')
 class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_position=True, randomize_initial_rotation=True,
-                 distance_threshold=0.01, rotation_threshold=0.1, n_substeps=20):
+                 distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False):
 
         self.object_range = 0.15
         self.target_range = 0.15
         self.target_in_the_air = True
         self.has_object = has_object
-        self.ignore_target_rotation = False
+        self.ignore_target_rotation = ignore_target_rotation
         self.randomize_initial_rotation = randomize_initial_rotation
         self.randomize_initial_position = randomize_initial_position
         self.distance_threshold = distance_threshold
@@ -193,18 +193,18 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
 
 class HandPickAndPlaceEnv(MovingHandEnv):
-    def __init__(self, reward_type='sparse'):
+    def __init__(self, reward_type='sparse', **kwargs):
         super(HandPickAndPlaceEnv, self).__init__(
             model_path=HAND_PICK_AND_PLACE_XML,
             reward_type=reward_type,
-            has_object=True
+            has_object=True, **kwargs
         )
 
 
 class MovingHandReachEnv(MovingHandEnv):
-    def __init__(self, reward_type='sparse'):
+    def __init__(self, reward_type='sparse', **kwargs):
         super(MovingHandReachEnv, self).__init__(
             model_path=HAND_MOVE_AND_REACH_XML,
             reward_type=reward_type,
-            has_object=False
+            has_object=False, **kwargs
         )
