@@ -13,6 +13,7 @@ except ImportError as e:
                                        "https://github.com/openai/mujoco-py/.)".format(e))
 
 HAND_PICK_AND_PLACE_XML = os.path.join('hand', 'pick_and_place.xml')
+HAND_MOVE_AND_REACH_XML = os.path.join('hand', 'move_and_reach.xml')
 
 
 class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
@@ -32,9 +33,10 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.reward_type = reward_type
         self.forearm_bounds = (np.r_[0.7, 0.3, 0.3], np.r_[1.75, 1.2, 1.1])
 
-        initial_qpos = initial_qpos or {
-            'object:joint': [1.25, 0.53, 0.4, 1., 0., 0., 0.],
-        }
+        default_qpos = dict()
+        if self.has_object:
+            default_qpos['object:joint'] = [1.25, 0.53, 0.4, 1., 0., 0., 0.]
+        initial_qpos = initial_qpos or default_qpos
 
         hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos,
                                   relative_control=relative_control, arm_control=True)
@@ -202,7 +204,7 @@ class HandPickAndPlaceEnv(MovingHandEnv):
 class MovingHandReachEnv(MovingHandEnv):
     def __init__(self, reward_type='sparse'):
         super(MovingHandReachEnv, self).__init__(
-            model_path=HAND_PICK_AND_PLACE_XML,
+            model_path=HAND_MOVE_AND_REACH_XML,
             reward_type=reward_type,
             has_object=False
         )
