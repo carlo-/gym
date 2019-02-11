@@ -2,6 +2,7 @@ import itertools as it
 
 import numpy as np
 import gym
+from gym.utils.mjviewer import add_selection_logger
 
 
 def main():
@@ -9,8 +10,9 @@ def main():
     env = gym.make('MovingHandReachDense-v0')
     env.reset()
 
+    env.render()
     sim = env.unwrapped.sim
-    model = sim.model
+    add_selection_logger(env.unwrapped.viewer, sim)
 
     for i in it.count():
 
@@ -25,7 +27,7 @@ def main():
                 action[20+j] = val
 
                 rew = env.step(action)[1]
-                print(rew)
+                # print(rew)
 
 
 if __name__ == '__main__':
