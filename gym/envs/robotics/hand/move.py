@@ -3,7 +3,7 @@ import numpy as np
 
 from gym import utils, error
 from gym.envs.robotics import rotations, hand_env
-from gym.envs.robotics.utils import robot_get_obs, reset_mocap_welds, mocap_set_action
+from gym.envs.robotics.utils import robot_get_obs, reset_mocap_welds, reset_mocap2body_xpos
 
 try:
     import mujoco_py
@@ -30,6 +30,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.distance_threshold = distance_threshold
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
+        self.forearm_bounds = (np.r_[0.7, 0.3, 0.3], np.r_[1.75, 1.2, 1.1])
 
         initial_qpos = initial_qpos or {
             'object:joint': [1.25, 0.53, 0.4, 1., 0., 0., 0.],
@@ -81,11 +82,25 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     # ----------------------------
 
     def _set_action(self, action):
+
         assert action.shape == self.action_space.shape
         hand_ctrl = action[:20]
         forearm_ctrl = action[20:] * 0.1
+
+        # set hand action
         hand_env.HandEnv._set_action(self, hand_ctrl)
-        mocap_set_action(self.sim, forearm_ctrl)
+
+        # set forearm action
+        assert self.sim.model.nmocap == 1
+        pos_delta = forearm_ctrl[:3]
+        quat_delta = forearm_ctrl[3:]
+
+        new_pos = self.sim.data.mocap_pos[0] + pos_delta
+        new_quat = self.sim.data.mocap_quat[0] + quat_delta
+
+        reset_mocap2body_xpos(self.sim)
+        self.sim.data.mocap_pos[0, :] = np.clip(new_pos, *self.forearm_bounds)
+        self.sim.data.mocap_quat[0, :] = new_quat
 
     def _is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray):
         d_pos, d_rot = self._goal_distance(achieved_goal, desired_goal)
