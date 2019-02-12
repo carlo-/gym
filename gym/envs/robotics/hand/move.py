@@ -42,13 +42,18 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                                   relative_control=relative_control, arm_control=True)
         utils.EzPickle.__init__(self)
 
-    def _get_achieved_goal(self):
-        body_name = 'object' if self.has_object else 'robot0:palm'
-        body_pose = np.r_[
+    def _get_body_pose(self, body_name):
+        return np.r_[
             self.sim.data.get_body_xpos(body_name),
             self.sim.data.get_body_xquat(body_name)
         ]
-        return body_pose
+
+    def _get_achieved_goal(self):
+        body_name = 'object' if self.has_object else 'robot0:palm'
+        pose = self._get_body_pose(body_name)
+        if self.ignore_target_rotation:
+            pose[3:] = 0.0
+        return pose
 
     def _goal_distance(self, goal_a, goal_b):
         assert goal_a.shape == goal_b.shape
@@ -180,14 +185,27 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
     def _get_obs(self):
         robot_qpos, robot_qvel = robot_get_obs(self.sim)
-        object_qvel = np.zeros(0)
+
+        dt = self.sim.nsubsteps * self.sim.model.opt.timestep
+        forearm_pos = self.sim.data.get_body_xpos('robot0:forearm')
+        forearm_rot = rotations.mat2euler(self.sim.data.get_body_xmat('robot0:forearm'))
+        forearm_velp = self.sim.data.get_body_xvelp('robot0:forearm') * dt
+
+        object_pose = np.zeros(0)
+        object_vel = np.zeros(0)
         if self.has_object:
-            object_qvel = self.sim.data.get_joint_qvel('object:joint')
-        achieved_goal = self._get_achieved_goal().ravel()
-        observation = np.concatenate([robot_qpos, robot_qvel, object_qvel, achieved_goal])
+            object_vel = self.sim.data.get_joint_qvel('object:joint')
+            object_pose = self._get_body_pose('object')
+
+        wrist_qpos = robot_qpos[:2]
+        wrist_qvel = robot_qvel[:2] * dt
+
+        observation = np.concatenate([
+            forearm_pos, forearm_rot, forearm_velp, wrist_qpos, wrist_qvel, object_pose, object_vel
+        ])
         return {
             'observation': observation,
-            'achieved_goal': achieved_goal,
+            'achieved_goal': self._get_achieved_goal().ravel(),
             'desired_goal': self.goal.ravel().copy(),
         }
 
