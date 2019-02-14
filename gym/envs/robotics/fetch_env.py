@@ -2,11 +2,18 @@ import mujoco_py
 import numpy as np
 
 from gym.envs.robotics import rotations, robot_env, utils
+from scipy.special import huber
 
 
 def goal_distance(goal_a, goal_b):
     assert goal_a.shape == goal_b.shape
     return np.linalg.norm(goal_a - goal_b, axis=-1)
+
+
+def huber_loss(a, b):
+    r = a - b
+    delta = 1.0
+    return np.sum(huber(delta, r), axis=-1)
 
 
 class FetchEnv(robot_env.RobotEnv):
@@ -87,37 +94,49 @@ class FetchEnv(robot_env.RobotEnv):
     # GoalEnv methods
     # ----------------------------
 
-    def compute_reward(self, achieved_goal, goal, info):
+    def compute_reward(self, achieved_goal: np.ndarray, goal: np.ndarray, info: dict):
         # Compute distance between goal and the achieved goal.
         d = goal_distance(achieved_goal, goal)
 
         if self.reward_params is not None and self.has_object:
 
-            min_dist = self.reward_params.get('min_dist', 0.03)
-            c = self.reward_params.get('c', 0.0)
-            k = self.reward_params.get('k', 1.0)
-            grasp_bonus = self.reward_params.get('grasp_bonus', 0.0)
-
             # object and gripper positions
-            obj_pos = achieved_goal # type: np.ndarray
-            grp_pos = info['gripper_pos'] # type: np.ndarray
-            grp_state = info['gripper_state'] # type: np.ndarray
+            obj_pos = achieved_goal  # type: np.ndarray
+            target_pos = goal  # type: np.ndarray
+            grp_pos = info['gripper_pos']  # type: np.ndarray
+            grp_state = info['gripper_state']  # type: np.ndarray
 
-            # desired gripper position and distance to this goal
-            grp_goal_d = goal_distance(grp_pos, obj_pos)
+            if self.reward_params.get('huber_loss', False):
+                # shaped reward with Huber loss
+                # similar to https://arxiv.org/pdf/1610.00633.pdf
+                c1 = self.reward_params.get('c1', 1.0)
+                c2 = self.reward_params.get('c2', 1.0)
+                d1 = huber_loss(obj_pos, grp_pos)
+                d2 = huber_loss(obj_pos, target_pos)
+                d = c1 * d1 + c2 * d2
 
-            # actual dist between fingers
-            fingers_goal_d = grp_state.sum()
-
-            if grp_goal_d < min_dist:
-                # gripper surrounding the object, clamp gripper distance bonus to avoid discontinuities
-                grp_goal_d = min_dist
             else:
-                # still away from object, keep gripper open
-                fingers_goal_d = 0.101 # ~ max finger distance
 
-            d += fingers_goal_d * grasp_bonus
-            d += (grp_goal_d ** k) * c
+                min_dist = self.reward_params.get('min_dist', 0.03)
+                c = self.reward_params.get('c', 0.0)
+                k = self.reward_params.get('k', 1.0)
+                grasp_bonus = self.reward_params.get('grasp_bonus', 0.0)
+
+                # desired gripper position and distance to this goal
+                grp_goal_d = goal_distance(grp_pos, obj_pos)
+
+                # actual dist between fingers
+                fingers_goal_d = grp_state.sum()
+
+                if grp_goal_d < min_dist:
+                    # gripper surrounding the object, clamp gripper distance bonus to avoid discontinuities
+                    grp_goal_d = min_dist
+                else:
+                    # still away from object, keep gripper open
+                    fingers_goal_d = 0.101 # ~ max finger distance
+
+                d += fingers_goal_d * grasp_bonus
+                d += (grp_goal_d ** k) * c
 
         if self.reward_type == 'sparse':
             return -(d > self.distance_threshold).astype(np.float32)

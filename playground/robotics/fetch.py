@@ -47,7 +47,8 @@ def action_thread():
 def main():
     env = gym.make('FetchPickAndPlaceDense-v1')
     raw_env = env.unwrapped # type: FetchEnv
-    raw_env.reward_params = dict(k=1.0, c=1.0, grasp_bonus=2.0)
+    # raw_env.reward_params = dict(k=1.0, c=1.0, grasp_bonus=2.0)
+    raw_env.reward_params = dict(huber_loss=True)
     sim = raw_env.sim
 
     global selected_action
