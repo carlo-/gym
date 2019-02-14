@@ -13,6 +13,7 @@ def main():
     env.render()
     sim = env.unwrapped.sim
     add_selection_logger(env.unwrapped.viewer, sim)
+    print('nconmax:', sim.model.nconmax)
 
     for i in it.count():
 
