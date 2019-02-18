@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import mujoco_py
 import numpy as np
 
@@ -35,7 +37,7 @@ class FetchEnv(robot_env.RobotEnv):
             has_object (boolean): whether or not the environment has an object
             target_in_the_air (boolean): whether or not the target should be in the air above the table or on the table surface
             target_offset (float or array with 3 elements): offset of the target
-            obj_range (float): range of a uniform distribution for sampling initial object positions
+            obj_range (float or array with 2 elements): range of a uniform distribution for sampling initial object positions
             target_range (float): range of a uniform distribution for sampling a target
             distance_threshold (float): the threshold after which a goal is considered achieved
             initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
@@ -46,11 +48,19 @@ class FetchEnv(robot_env.RobotEnv):
         self.has_object = has_object
         self.target_in_the_air = target_in_the_air
         self.target_offset = target_offset
-        self.obj_range = obj_range
         self.target_range = target_range
         self.distance_threshold = distance_threshold
         self.reward_type = reward_type
         self.reward_params = None
+
+        if isinstance(obj_range, Sequence):
+            assert len(obj_range) == 2, obj_range[0] <= obj_range[1]
+            self.obj_range = obj_range
+        elif isinstance(obj_range, float) or isinstance(obj_range, int):
+            assert obj_range >= 0.0
+            self.obj_range = (0.0, obj_range)
+        else:
+            raise ValueError
 
         super(FetchEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
@@ -233,9 +243,11 @@ class FetchEnv(robot_env.RobotEnv):
 
         # Randomize start position of object.
         if self.has_object:
-            object_xpos = self.initial_gripper_xpos[:2]
-            while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.1:
-                object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(-self.obj_range, self.obj_range, size=2)
+            assert len(self.obj_range) == 2, self.obj_range[0] <= self.obj_range[1]
+            displ = self.np_random.uniform(*self.obj_range, size=2)
+            displ *= self.np_random.choice([1., -1.], size=2)
+            object_xpos = self.initial_gripper_xpos[:2] + displ
+
             object_qpos = self.sim.data.get_joint_qpos('object0:joint')
             assert object_qpos.shape == (7,)
             object_qpos[:2] = object_xpos
