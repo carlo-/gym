@@ -243,10 +243,12 @@ class FetchEnv(robot_env.RobotEnv):
 
         # Randomize start position of object.
         if self.has_object:
-            assert len(self.obj_range) == 2, self.obj_range[0] <= self.obj_range[1]
-            displ = self.np_random.uniform(*self.obj_range, size=2)
-            displ *= self.np_random.choice([1., -1.], size=2)
-            object_xpos = self.initial_gripper_xpos[:2] + displ
+            range_min, range_max = self.obj_range
+            assert range_min <= range_max
+
+            object_xpos = self.initial_gripper_xpos[:2]
+            while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < range_min:
+                object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(-range_max, range_max, size=2)
 
             object_qpos = self.sim.data.get_joint_qpos('object0:joint')
             assert object_qpos.shape == (7,)
