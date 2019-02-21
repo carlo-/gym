@@ -130,7 +130,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.sim.forward()
 
         # Move end effector into position.
-        forearm_pos = np.array([1.25, 0.53, 0.6])
+        forearm_pos = np.array([1.25, 0.75, 0.8])
         forearm_quat = rotations.euler2quat(np.r_[0., 1.97, 1.57])
         self.sim.data.set_mocap_pos('robot0:mocap', forearm_pos)
         self.sim.data.set_mocap_quat('robot0:mocap', forearm_quat)
