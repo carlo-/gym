@@ -7,7 +7,7 @@ from gym.utils.mjviewer import add_selection_logger
 
 def main():
     # env = gym.make('HandPickAndPlaceDense-v0')
-    env = gym.make('MovingHandReachDense-v0')
+    env = gym.make('MovingHandReachDense-v0', ignore_rotation_ctrl=True)
     env.reset()
 
     env.render()

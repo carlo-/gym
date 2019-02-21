@@ -18,7 +18,7 @@ HAND_MOVE_AND_REACH_XML = os.path.join('hand', 'move_and_reach.xml')
 
 class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
-                 randomize_initial_position=True, randomize_initial_rotation=True,
+                 randomize_initial_position=True, randomize_initial_rotation=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False):
 
         self.object_range = 0.15
@@ -28,6 +28,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.ignore_target_rotation = ignore_target_rotation
         self.randomize_initial_rotation = randomize_initial_rotation
         self.randomize_initial_position = randomize_initial_position
+        self.ignore_rotation_ctrl = ignore_rotation_ctrl
         self.distance_threshold = distance_threshold
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
@@ -102,6 +103,9 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         pos_delta = forearm_ctrl[:3]
         quat_delta = forearm_ctrl[3:]
 
+        if self.ignore_rotation_ctrl:
+            quat_delta *= 0.0
+
         new_pos = self.sim.data.mocap_pos[0] + pos_delta
         new_quat = self.sim.data.mocap_quat[0] + quat_delta
 
@@ -124,7 +128,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
         # Move end effector into position.
         forearm_pos = np.array([1.25, 0.53, 0.6])
-        forearm_quat = np.array([1., 0., 1., 0.])
+        forearm_quat = rotations.euler2quat(np.r_[0., 1.97, 1.57])
         self.sim.data.set_mocap_pos('robot0:mocap', forearm_pos)
         self.sim.data.set_mocap_quat('robot0:mocap', forearm_quat)
         for _ in range(10):
