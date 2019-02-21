@@ -118,7 +118,6 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
     def _is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray):
         d_pos, d_rot = self._goal_distance(achieved_goal, desired_goal)
-        print(d_pos, d_rot)
         achieved_pos = (d_pos < self.distance_threshold).astype(np.float32)
         achieved_rot = (d_rot < self.rotation_threshold).astype(np.float32)
         achieved_both = achieved_pos * achieved_rot
