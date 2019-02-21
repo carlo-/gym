@@ -34,6 +34,9 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.reward_type = reward_type
         self.forearm_bounds = (np.r_[0.7, 0.3, 0.3], np.r_[1.75, 1.2, 1.1])
 
+        if ignore_rotation_ctrl and not ignore_target_rotation:
+            raise ValueError('Target rotation must be ignored if arm cannot rotate! Set ignore_target_rotation=True')
+
         default_qpos = dict()
         if self.has_object:
             default_qpos['object:joint'] = [1.25, 0.53, 0.4, 1., 0., 0., 0.]
@@ -115,6 +118,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
     def _is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray):
         d_pos, d_rot = self._goal_distance(achieved_goal, desired_goal)
+        print(d_pos, d_rot)
         achieved_pos = (d_pos < self.distance_threshold).astype(np.float32)
         achieved_rot = (d_rot < self.rotation_threshold).astype(np.float32)
         achieved_both = achieved_pos * achieved_rot
