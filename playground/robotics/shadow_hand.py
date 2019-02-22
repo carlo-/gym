@@ -41,7 +41,7 @@ def action_thread():
 
 def main():
     # env = gym.make('HandPickAndPlaceDense-v0')
-    env = gym.make('MovingHandReach-v0', ignore_rotation_ctrl=True, ignore_target_rotation=True)
+    env = gym.make('HandPickAndPlace-v0', ignore_rotation_ctrl=True, ignore_target_rotation=True, success_on_grasp_only=True)
     env.reset()
 
     env.render()

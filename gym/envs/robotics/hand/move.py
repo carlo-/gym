@@ -16,10 +16,29 @@ HAND_PICK_AND_PLACE_XML = os.path.join('hand', 'pick_and_place.xml')
 HAND_MOVE_AND_REACH_XML = os.path.join('hand', 'move_and_reach.xml')
 
 
+def _goal_distance(goal_a, goal_b, ignore_target_rotation):
+    assert goal_a.shape == goal_b.shape
+    assert goal_a.shape[-1] == 7
+
+    delta_pos = goal_a[..., :3] - goal_b[..., :3]
+    d_pos = np.linalg.norm(delta_pos, axis=-1)
+    d_rot = np.zeros_like(goal_b[..., 0])
+
+    if not ignore_target_rotation:
+        quat_a, quat_b = goal_a[..., 3:], goal_b[..., 3:]
+        # Subtract quaternions and extract angle between them.
+        quat_diff = rotations.quat_mul(quat_a, rotations.quat_conjugate(quat_b))
+        angle_diff = 2 * np.arccos(np.clip(quat_diff[..., 0], -1., 1.))
+        d_rot = angle_diff
+    assert d_pos.shape == d_rot.shape
+    return d_pos, d_rot
+
+
 class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_position=True, randomize_initial_rotation=True, ignore_rotation_ctrl=False,
-                 distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False):
+                 distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
+                 success_on_grasp_only=False):
 
         self.object_range = 0.15
         self.target_range = 0.15
@@ -32,10 +51,17 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.distance_threshold = distance_threshold
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
+        self.success_on_grasp_only = success_on_grasp_only
         self.forearm_bounds = (np.r_[0.7, 0.3, 0.3], np.r_[1.75, 1.2, 1.1])
 
         if ignore_rotation_ctrl and not ignore_target_rotation:
             raise ValueError('Target rotation must be ignored if arm cannot rotate! Set ignore_target_rotation=True')
+
+        if success_on_grasp_only:
+            if reward_type != 'sparse':
+                raise ValueError('Parameter success_on_grasp_only requires sparse rewards!')
+            if not has_object:
+                raise ValueError('Parameter success_on_grasp_only requires object to be grasped!')
 
         default_qpos = dict()
         if self.has_object:
@@ -53,28 +79,21 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         ]
 
     def _get_achieved_goal(self):
-        body_name = 'object' if self.has_object else 'robot0:palm'
-        pose = self._get_body_pose(body_name)
+        palm_pose = self._get_body_pose('robot0:ffknuckle')
+
+        if self.has_object:
+            pose = self._get_body_pose('object')
+        else:
+            pose = palm_pose
+
         if self.ignore_target_rotation:
             pose[3:] = 0.0
+
+        if self.success_on_grasp_only:
+            d = np.linalg.norm(palm_pose[:3] - pose[:3])
+            return np.r_[pose, d]
+
         return pose
-
-    def _goal_distance(self, goal_a, goal_b):
-        assert goal_a.shape == goal_b.shape
-        assert goal_a.shape[-1] == 7
-
-        delta_pos = goal_a[..., :3] - goal_b[..., :3]
-        d_pos = np.linalg.norm(delta_pos, axis=-1)
-        d_rot = np.zeros_like(goal_b[..., 0])
-
-        if not self.ignore_target_rotation:
-            quat_a, quat_b = goal_a[..., 3:], goal_b[..., 3:]
-            # Subtract quaternions and extract angle between them.
-            quat_diff = rotations.quat_mul(quat_a, rotations.quat_conjugate(quat_b))
-            angle_diff = 2 * np.arccos(np.clip(quat_diff[..., 0], -1., 1.))
-            d_rot = angle_diff
-        assert d_pos.shape == d_rot.shape
-        return d_pos, d_rot
 
     # GoalEnv methods
     # ----------------------------
@@ -84,7 +103,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             success = self._is_success(achieved_goal, goal).astype(np.float32)
             return success - 1.
         else:
-            d_pos, d_rot = self._goal_distance(achieved_goal, goal)
+            d_pos, d_rot = _goal_distance(achieved_goal, goal, self.ignore_target_rotation)
             # We weigh the difference in position to avoid that `d_pos` (in meters) is completely
             # dominated by `d_rot` (in radians).
             return -(10. * d_pos + d_rot)
@@ -117,11 +136,16 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.sim.data.mocap_quat[0, :] = new_quat
 
     def _is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray):
-        d_pos, d_rot = self._goal_distance(achieved_goal, desired_goal)
+        d_pos, d_rot = _goal_distance(achieved_goal[..., :7], desired_goal[..., :7], self.ignore_target_rotation)
         achieved_pos = (d_pos < self.distance_threshold).astype(np.float32)
         achieved_rot = (d_rot < self.rotation_threshold).astype(np.float32)
-        achieved_both = achieved_pos * achieved_rot
-        return achieved_both
+        achieved_all = achieved_pos * achieved_rot
+        if self.success_on_grasp_only:
+            assert achieved_goal.shape[-1] == 8
+            d_palm = achieved_goal[..., 7]
+            achieved_grasp = (d_palm < 0.06).astype(np.float32)
+            achieved_all *= achieved_grasp
+        return achieved_all
 
     def _env_setup(self, initial_qpos):
         for name, value in initial_qpos.items():
@@ -204,11 +228,8 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             object_vel = self.sim.data.get_joint_qvel('object:joint')
             object_pose = self._get_body_pose('object')
 
-        wrist_qpos = robot_qpos[:2]
-        wrist_qvel = robot_qvel[:2] * dt
-
         observation = np.concatenate([
-            forearm_pos, forearm_rot, forearm_velp, wrist_qpos, wrist_qvel, object_pose, object_vel
+            forearm_pos, forearm_rot, forearm_velp, robot_qpos, robot_qvel, object_pose, object_vel
         ])
         return {
             'observation': observation,
