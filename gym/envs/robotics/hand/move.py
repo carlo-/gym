@@ -199,12 +199,14 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             if self.target_in_the_air and self.np_random.uniform() < 0.5:
                 goal[2] += self.np_random.uniform(0, 0.45)
         goal = np.r_[goal, np.zeros(4)]
+        if self.success_on_grasp_only:
+            goal = np.r_[goal, 0.]
         return goal
 
     def _render_callback(self):
         # Assign current state to target object but offset a bit so that the actual object
         # is not obscured.
-        goal = self.goal.copy()
+        goal = self.goal.copy()[:7]
         assert goal.shape == (7,)
         self.sim.data.set_joint_qpos('target:joint', goal)
         self.sim.data.set_joint_qvel('target:joint', np.zeros(6))
