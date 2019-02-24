@@ -143,7 +143,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         if self.success_on_grasp_only:
             assert achieved_goal.shape[-1] == 8
             d_palm = achieved_goal[..., 7]
-            achieved_grasp = (d_palm < 0.06).astype(np.float32)
+            achieved_grasp = (d_palm < 0.08).astype(np.float32)
             achieved_all *= achieved_grasp
         return achieved_all
 

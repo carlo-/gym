@@ -39,6 +39,21 @@ def action_thread():
         selected_action = a
 
 
+def test_pick_and_place():
+    from tqdm import tqdm
+    env = gym.make('HandPickAndPlace-v0')
+    sim = env.unwrapped.sim
+    done = True
+    for _ in tqdm(range(50_000)):
+        if done:
+            env.reset()
+        action = np.zeros(env.action_space.shape)
+        done = env.step(action)[2]
+        obj_pos = sim.data.get_body_xpos('object')
+        if obj_pos[2] < 0.42:
+            raise RuntimeError('Object not on the table!')
+
+
 def main():
     # env = gym.make('HandPickAndPlaceDense-v0')
     env = gym.make('HandPickAndPlace-v0', ignore_rotation_ctrl=True, ignore_target_rotation=True, success_on_grasp_only=True)
