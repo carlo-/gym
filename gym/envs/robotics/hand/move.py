@@ -36,7 +36,7 @@ def _goal_distance(goal_a, goal_b, ignore_target_rotation):
 
 class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
-                 randomize_initial_position=True, randomize_initial_rotation=True, ignore_rotation_ctrl=False,
+                 randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
                  success_on_grasp_only=False):
 
@@ -45,14 +45,14 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.target_in_the_air = True
         self.has_object = has_object
         self.ignore_target_rotation = ignore_target_rotation
-        self.randomize_initial_rotation = randomize_initial_rotation
-        self.randomize_initial_position = randomize_initial_position
+        self.randomize_initial_arm_pos = randomize_initial_arm_pos
+        self.randomize_initial_object_pos = randomize_initial_object_pos
         self.ignore_rotation_ctrl = ignore_rotation_ctrl
         self.distance_threshold = distance_threshold
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
         self.success_on_grasp_only = success_on_grasp_only
-        self.forearm_bounds = (np.r_[0.7, 0.3, 0.3], np.r_[1.75, 1.2, 1.1])
+        self.forearm_bounds = (np.r_[0.7, 0.3, 0.52], np.r_[1.75, 1.2, 1.1])
 
         if ignore_rotation_ctrl and not ignore_target_rotation:
             raise ValueError('Target rotation must be ignored if arm cannot rotate! Set ignore_target_rotation=True')
@@ -78,11 +78,23 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             self.sim.data.get_body_xquat(body_name)
         ]
 
+    def _get_site_pose(self, site_name):
+        return np.r_[
+            self.sim.data.get_site_xpos(site_name),
+            rotations.mat2quat(self.sim.data.get_site_xmat(site_name))
+        ]
+
+    def _get_palm_pose(self):
+        return self._get_site_pose('robot0:palm_center')
+
+    def _get_object_pose(self):
+        return self._get_body_pose('object')
+
     def _get_achieved_goal(self):
-        palm_pose = self._get_body_pose('robot0:ffknuckle')
+        palm_pose = self._get_palm_pose()
 
         if self.has_object:
-            pose = self._get_body_pose('object')
+            pose = self._get_object_pose()
         else:
             pose = palm_pose
 
@@ -94,6 +106,13 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             return np.r_[pose, d]
 
         return pose
+
+    def _set_arm_pose(self, pose: np.ndarray):
+        assert pose.size == 7 or pose.size == 3
+        reset_mocap2body_xpos(self.sim)
+        self.sim.data.mocap_pos[0, :] = np.clip(pose[:3], *self.forearm_bounds)
+        if pose.size == 7:
+            self.sim.data.mocap_quat[0, :] = pose[3:]
 
     # GoalEnv methods
     # ----------------------------
@@ -130,10 +149,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
         new_pos = self.sim.data.mocap_pos[0] + pos_delta
         new_quat = self.sim.data.mocap_quat[0] + quat_delta
-
-        reset_mocap2body_xpos(self.sim)
-        self.sim.data.mocap_pos[0, :] = np.clip(new_pos, *self.forearm_bounds)
-        self.sim.data.mocap_quat[0, :] = new_quat
+        self._set_arm_pose(np.r_[new_pos, new_quat])
 
     def _is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray):
         d_pos, d_rot = _goal_distance(achieved_goal[..., :7], desired_goal[..., :7], self.ignore_target_rotation)
@@ -154,7 +170,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.sim.forward()
 
         # Move end effector into position.
-        forearm_pos = np.array([1.25, 0.75, 0.8])
+        forearm_pos = np.array([1.05, 0.75, 0.65])
         forearm_quat = rotations.euler2quat(np.r_[0., 1.97, 1.57])
         self.sim.data.set_mocap_pos('robot0:mocap', forearm_pos)
         self.sim.data.set_mocap_quat('robot0:mocap', forearm_quat)
@@ -162,6 +178,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             self.sim.step()
 
         self.initial_arm_xpos = self.sim.data.get_body_xpos('robot0:forearm').copy()
+        self.initial_palm_xpos = self._get_palm_pose()[:3]
         if self.has_object:
             self.height_offset = self.sim.data.get_site_xpos('object:center')[2]
 
@@ -177,14 +194,26 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def _reset_sim(self):
         self.sim.set_state(self.initial_state)
 
+        # Randomize initial position of arm.
+        if self.randomize_initial_arm_pos:
+            new_arm_pos = self.initial_arm_xpos.copy()
+            new_arm_pos[:2] += self.np_random.uniform(-0.2, 0.2, size=2)
+            self._set_arm_pose(new_arm_pos)
+            for _ in range(10):
+                self.sim.step()
+
         # Randomize initial position of object.
         if self.has_object:
             object_qpos = self.sim.data.get_joint_qpos('object:joint').copy()
 
-            object_xpos = self.initial_arm_xpos[:2]
-            while np.linalg.norm(object_xpos - self.initial_arm_xpos[:2]) < 0.1:
-                offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
-                object_xpos = self.initial_arm_xpos[:2] + offset
+            if self.randomize_initial_object_pos:
+                object_xpos = self.initial_palm_xpos[:2]
+                while np.linalg.norm(object_xpos - self.initial_palm_xpos[:2]) < 0.1:
+                    offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
+                    object_xpos = self.initial_palm_xpos[:2] + offset
+            else:
+                object_xpos = self._get_palm_pose()[:2]
+                object_xpos += self.np_random.uniform(-0.005, 0.005, size=2)  # always add small amount of noise
 
             object_qpos[:2] = object_xpos
             self.sim.data.set_joint_qpos('object:joint', object_qpos)

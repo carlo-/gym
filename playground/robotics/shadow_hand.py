@@ -56,7 +56,14 @@ def test_pick_and_place():
 
 def main():
     # env = gym.make('HandPickAndPlaceDense-v0')
-    env = gym.make('HandPickAndPlace-v0', ignore_rotation_ctrl=True, ignore_target_rotation=True, success_on_grasp_only=True)
+    env = gym.make(
+        'HandPickAndPlace-v0',
+        ignore_rotation_ctrl=True,
+        ignore_target_rotation=True,
+        success_on_grasp_only=True,
+        randomize_initial_arm_pos=True,
+        randomize_initial_object_pos=False
+    )
     env.reset()
 
     env.render()
@@ -84,8 +91,10 @@ def main():
                 action[-7:] = selected_action * 0.2
                 selected_action *= 0.0
 
-                rew = env.step(action)[1]
+                rew, done = env.step(action)[1:3]
                 print(rew)
+                # if done:
+                #     env.reset()
 
 
 if __name__ == '__main__':
