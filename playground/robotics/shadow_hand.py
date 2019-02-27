@@ -1,3 +1,5 @@
+import copy
+import pickle
 import itertools as it
 from threading import Thread
 
@@ -86,6 +88,107 @@ def test_arm_bounds():
             obs = env.reset()
 
 
+def generate_grasp_state(max_states=20, file_path=None):
+
+    env = gym.make(
+        'HandPickAndPlace-v0',
+        ignore_rotation_ctrl=True,
+        ignore_target_rotation=True,
+        randomize_initial_arm_pos=True,
+        randomize_initial_object_pos=False
+    )
+
+    obs, hand_ctrl, grasp_steps, env_steps, success_steps = (None,)*5
+    reset = True
+    found_states = []
+    max_env_steps = 50
+
+    while len(found_states) < max_states:
+
+        if reset:
+            obs = env.reset()
+            hand_ctrl = np.zeros(18)
+            grasp_steps = 0
+            success_steps = 0
+            env_steps = 0
+            reset = False
+
+        if obs['desired_goal'][2] < 0.48:
+            reset = True
+            continue
+
+        action = np.zeros(env.action_space.shape)
+        obj_pos = obs['achieved_goal'][:3]
+        d = obj_pos - env.unwrapped._get_palm_pose(no_rot=True)[:3]
+        reached = np.linalg.norm(d) < 0.05
+        dropped = obj_pos[2] < 0.40
+
+        if dropped:
+            reset = True
+            continue
+
+        hand_ctrl[:] = -1.0
+        hand_ctrl[13:] = (-1., 1., 1., -1., -1.)
+        arm_pos_ctrl = d * 0.5
+        if reached:
+            hand_ctrl[:] = 1.0
+            hand_ctrl[13:] = (1., 1., 1., -1., -1.)
+            arm_pos_ctrl *= 0.0
+            grasp_steps += 1
+            if grasp_steps > 10:
+                d = obs['desired_goal'][:3] - obs['achieved_goal'][:3]
+                arm_pos_ctrl = d * 0.5
+        else:
+            grasp_steps = 0
+
+        action[-7:-4] = arm_pos_ctrl
+        action[2:-7] = hand_ctrl
+        obs, reward, _, _ = env.step(action)
+        if reward == 0.0:
+            success_steps += 1
+            if success_steps >= 20:
+                state = copy.deepcopy(env.unwrapped.sim.get_state())
+                found_states.append(state)
+                print(f'Found {len(found_states)} so far.')
+                reset = True
+        else:
+            env_steps += 1
+            success_steps = 0
+        reset = reset or env_steps >= max_env_steps
+    print(f'Found {len(found_states)} possible states.')
+
+    stable_states = []
+    sim = env.unwrapped.sim
+    for state in found_states:
+        sim.set_state(copy.deepcopy(state))
+        sim.forward()
+        stable = True
+        for _ in range(200):
+            sim.step()
+            obj_pos = env.unwrapped._get_object_pose()[:3]
+            palm_pos = env.unwrapped._get_palm_pose()[:3]
+            if np.linalg.norm(obj_pos - palm_pos) > 0.05:
+                stable = False
+                break
+        if stable:
+            print(f'Stable state at index {len(stable_states)}')
+            for _ in range(50):
+                env.render()
+                sim.step()
+            stable_states.append(state)
+
+    if len(stable_states) > 0:
+        print('Select stable state: ')
+        sel = int(input())
+        state = stable_states[sel]
+        if file_path is not None:
+            pickle.dump(state, open(file_path, 'wb'))
+        return state
+
+    print('No stable grasps found!')
+    return None
+
+
 def main():
     # env = gym.make('HandPickAndPlaceDense-v0')
     env = gym.make(
@@ -94,18 +197,21 @@ def main():
         ignore_target_rotation=True,
         success_on_grasp_only=True,
         randomize_initial_arm_pos=True,
-        randomize_initial_object_pos=False
+        randomize_initial_object_pos=True,
+        grasp_state=True,
+        grasp_state_reset_p=0.5
     )
-    env.reset()
+    obs = env.reset()
 
     env.render()
     sim = env.unwrapped.sim
     add_selection_logger(env.unwrapped.viewer, sim)
     print('nconmax:', sim.model.nconmax)
+    print('obs.shape:', obs['observation'].shape)
 
     global selected_action
     p = Thread(target=action_thread)
-    p.start()
+    # p.start()
     selected_action = np.zeros(27)
 
     for i in it.count():
@@ -122,9 +228,9 @@ def main():
                 selected_action[-7:] *= 0.0
 
                 rew, done = env.step(action)[1:3]
-                print(rew)
-                # if done:
-                #     env.reset()
+                # print(rew)
+                if done:
+                    env.reset()
 
 
 if __name__ == '__main__':

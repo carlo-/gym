@@ -1,4 +1,5 @@
 import os
+import pickle
 import numpy as np
 
 from gym import utils, error
@@ -38,7 +39,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
-                 success_on_grasp_only=False):
+                 success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0):
 
         self.object_range = 0.15
         self.target_range = 0.15
@@ -53,6 +54,18 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.reward_type = reward_type
         self.success_on_grasp_only = success_on_grasp_only
         self.forearm_bounds = (np.r_[0.5, 0.3, 0.52], np.r_[1.75, 1.2, 1.1])
+
+        if isinstance(grasp_state, bool) and grasp_state:
+            p = os.path.join(os.path.dirname(__file__), '../assets/states/grasp_state.pkl')
+            if not os.path.exists(p):
+                raise IOError('File {} does not exist'.format(p))
+            grasp_state = pickle.load(open(p, 'rb'))
+
+        if grasp_state is not None and grasp_state_reset_p <= 0.0:
+            raise ValueError('grasp_state_reset_p must be greater than zero if grasp_state is specified!')
+
+        self.grasp_state = grasp_state
+        self.grasp_state_reset_p = grasp_state_reset_p
 
         if ignore_rotation_ctrl and not ignore_target_rotation:
             raise ValueError('Target rotation must be ignored if arm cannot rotate! Set ignore_target_rotation=True')
@@ -197,7 +210,16 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.viewer.cam.elevation = -14.
 
     def _reset_sim(self):
-        self.sim.set_state(self.initial_state)
+        reset_to_grasp_state = self.grasp_state_reset_p > self.np_random.uniform()
+        if reset_to_grasp_state:
+            self.sim.set_state(self.grasp_state)
+            # Fix hand ctrl so that fingers stay close while we update the arm position later
+            rel_ctrl = self.relative_control
+            self.relative_control = True
+            self._set_action(np.zeros(self.action_space.shape))
+            self.relative_control = rel_ctrl
+        else:
+            self.sim.set_state(self.initial_state)
 
         # Randomize initial position of arm.
         if self.randomize_initial_arm_pos:
@@ -208,7 +230,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                 self.sim.step()
 
         # Randomize initial position of object.
-        if self.has_object:
+        if self.has_object and not reset_to_grasp_state:
             object_qpos = self.sim.data.get_joint_qpos('object:joint').copy()
 
             if self.randomize_initial_object_pos:
