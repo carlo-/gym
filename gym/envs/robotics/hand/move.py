@@ -72,11 +72,14 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                                   relative_control=relative_control, arm_control=True)
         utils.EzPickle.__init__(self)
 
-    def _get_body_pose(self, body_name):
-        return np.r_[
-            self.sim.data.get_body_xpos(body_name),
-            self.sim.data.get_body_xquat(body_name)
-        ]
+    def _get_body_pose(self, body_name, no_rot=False, euler=False):
+        if no_rot:
+            rot = np.zeros(4)
+        else:
+            rot = self.sim.data.get_body_xquat(body_name)
+            if euler:
+                rot = rotations.quat2euler(rot)
+        return np.r_[self.sim.data.get_body_xpos(body_name), rot]
 
     def _get_site_pose(self, site_name, no_rot=False):
         if no_rot:
@@ -251,18 +254,21 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         robot_qpos, robot_qvel = robot_get_obs(self.sim)
 
         dt = self.sim.nsubsteps * self.sim.model.opt.timestep
-        forearm_pos = self.sim.data.get_body_xpos('robot0:forearm')
-        forearm_rot = rotations.mat2euler(self.sim.data.get_body_xmat('robot0:forearm'))
+        forearm_pose = self._get_body_pose('robot0:forearm', euler=True)
         forearm_velp = self.sim.data.get_body_xvelp('robot0:forearm') * dt
+        palm_pos = self._get_palm_pose(no_rot=True)[:3]
 
         object_pose = np.zeros(0)
         object_vel = np.zeros(0)
+        object_rel_pos = np.zeros(0)
         if self.has_object:
             object_vel = self.sim.data.get_joint_qvel('object:joint')
-            object_pose = self._get_body_pose('object')
+            object_pose = self._get_body_pose('object', euler=True)
+            object_rel_pos = object_pose[:3] - palm_pos
 
         observation = np.concatenate([
-            forearm_pos, forearm_rot, forearm_velp, robot_qpos, robot_qvel, object_pose, object_vel
+            forearm_pose, forearm_velp, palm_pos, object_rel_pos,
+            robot_qpos, robot_qvel, object_pose, object_vel
         ])
         return {
             'observation': observation,
