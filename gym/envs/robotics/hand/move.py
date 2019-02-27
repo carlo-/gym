@@ -52,7 +52,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
         self.success_on_grasp_only = success_on_grasp_only
-        self.forearm_bounds = (np.r_[0.7, 0.3, 0.52], np.r_[1.75, 1.2, 1.1])
+        self.forearm_bounds = (np.r_[0.5, 0.3, 0.52], np.r_[1.75, 1.2, 1.1])
 
         if ignore_rotation_ctrl and not ignore_target_rotation:
             raise ValueError('Target rotation must be ignored if arm cannot rotate! Set ignore_target_rotation=True')
@@ -78,20 +78,22 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             self.sim.data.get_body_xquat(body_name)
         ]
 
-    def _get_site_pose(self, site_name):
-        return np.r_[
-            self.sim.data.get_site_xpos(site_name),
-            rotations.mat2quat(self.sim.data.get_site_xmat(site_name))
-        ]
+    def _get_site_pose(self, site_name, no_rot=False):
+        if no_rot:
+            quat = np.zeros(4)
+        else:
+            # this is very inefficient, avoid computation when possible
+            quat = rotations.mat2quat(self.sim.data.get_site_xmat(site_name))
+        return np.r_[self.sim.data.get_site_xpos(site_name), quat]
 
-    def _get_palm_pose(self):
-        return self._get_site_pose('robot0:palm_center')
+    def _get_palm_pose(self, no_rot=False):
+        return self._get_site_pose('robot0:palm_center', no_rot)
 
     def _get_object_pose(self):
         return self._get_body_pose('object')
 
     def _get_achieved_goal(self):
-        palm_pose = self._get_palm_pose()
+        palm_pose = self._get_palm_pose(no_rot=self.ignore_target_rotation)
 
         if self.has_object:
             pose = self._get_object_pose()
@@ -178,7 +180,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             self.sim.step()
 
         self.initial_arm_xpos = self.sim.data.get_body_xpos('robot0:forearm').copy()
-        self.initial_palm_xpos = self._get_palm_pose()[:3]
+        self.initial_palm_xpos = self._get_palm_pose(no_rot=True)[:3]
         if self.has_object:
             self.height_offset = self.sim.data.get_site_xpos('object:center')[2]
 
@@ -212,7 +214,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                     offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
                     object_xpos = self.initial_palm_xpos[:2] + offset
             else:
-                object_xpos = self._get_palm_pose()[:2]
+                object_xpos = self._get_palm_pose(no_rot=True)[:2]
                 object_xpos += self.np_random.uniform(-0.005, 0.005, size=2)  # always add small amount of noise
 
             object_qpos[:2] = object_xpos

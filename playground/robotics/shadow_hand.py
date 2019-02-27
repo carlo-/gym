@@ -7,36 +7,52 @@ from gym.utils.mjviewer import add_selection_logger
 
 from playground.utils import wait_for_key
 
-selected_action = np.zeros(4)
+selected_action = None
 
 
 def action_from_key():
     key = wait_for_key()
+    pos = np.zeros(3)
+    rot = np.zeros(4)
+    wrist_ctrl = np.zeros(2)
+    hand_ctrl = np.zeros(18)
     if key == 'A':
-        return np.r_[-1, 0, 0, 0, 0, 0, 0]
+        pos = np.r_[-1, 0, 0]
     elif key == 'B':
-        return np.r_[1, 0, 0, 0, 0, 0, 0]
+        pos = np.r_[1, 0, 0]
     elif key == 'C':
-        return np.r_[0, 1, 0, 0, 0, 0, 0]
+        pos = np.r_[0, 1, 0]
     elif key == 'D':
-        return np.r_[0, -1, 0, 0, 0, 0, 0]
+        pos = np.r_[0, -1, 0]
     elif key == 'w':
-        return np.r_[0, 0, 1, 0, 0, 0, 0]
+        pos = np.r_[0, 0, 1]
     elif key == 's':
-        return np.r_[0, 0, -1, 0, 0, 0, 0]
-    elif key == 'z':
-        return np.r_[0, 0, 0, 1, 0, 0, 0]
+        pos = np.r_[0, 0, -1]
+    elif key == 'c':
+        hand_ctrl[:] = 1.0
+        hand_ctrl[13:] = 0.0
+    elif key == 'o':
+        hand_ctrl[:] = -1.0
+        hand_ctrl[13:] = 0.0
+    elif key == 't':
+        hand_ctrl[13:] = (1., 1., 1., -1., -1.)
+    elif key == 'y':
+        hand_ctrl[13:] = (-1., 1., 1., -1., -1.)
     elif key == 'x':
-        return np.r_[0, 0, 0, -1, 0, 0, 0]
-    else:
-        return np.zeros(7)
+        wrist_ctrl[1] = 1.0
+    elif key == 'z':
+        wrist_ctrl[1] = -1.0
+    return np.r_[wrist_ctrl*0.2, hand_ctrl*0.2, pos, rot]
 
 
 def action_thread():
     global selected_action
     while True:
         a = action_from_key().astype(np.float64)
-        selected_action = a
+        a_max = np.ones(a.shape)
+        a_min = -a_max
+        # a_max[15] = 0.1
+        selected_action = np.clip(selected_action + a, a_min, a_max)
 
 
 def test_pick_and_place():
@@ -52,6 +68,22 @@ def test_pick_and_place():
         obj_pos = sim.data.get_body_xpos('object')
         if obj_pos[2] < 0.42:
             raise RuntimeError('Object not on the table!')
+
+
+def test_arm_bounds():
+    from tqdm import tqdm
+    env = gym.make('HandPickAndPlace-v0')
+    obs = env.reset()
+    for _ in tqdm(range(50_000)):
+        action = np.zeros(env.action_space.shape)
+        d = (obs['desired_goal'] - env.unwrapped._get_palm_pose(no_rot=True))[:3]
+        action[-7:-4] = d * 2.0
+        reached = np.linalg.norm(d) < 0.01
+        obs, _, done, _ = env.step(action)
+        if done or reached:
+            if not reached:
+                raise RuntimeError('Arm could not reach the target!')
+            obs = env.reset()
 
 
 def main():
@@ -74,7 +106,7 @@ def main():
     global selected_action
     p = Thread(target=action_thread)
     p.start()
-    selected_action = np.zeros(7)
+    selected_action = np.zeros(27)
 
     for i in it.count():
 
@@ -85,11 +117,9 @@ def main():
             while True:
 
                 env.render()
-                action = env.action_space.sample()
-                # action[-7:] *= 0.0
-                # action[20+j] = val
-                action[-7:] = selected_action * 0.2
-                selected_action *= 0.0
+                action = selected_action.copy()
+                action[-7:] *= 0.2
+                selected_action[-7:] *= 0.0
 
                 rew, done = env.step(action)[1:3]
                 print(rew)
