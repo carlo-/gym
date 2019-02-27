@@ -40,6 +40,7 @@ setup(name='gym',
         'envs/robotics/assets/LICENSE.md',
         'envs/robotics/assets/fetch/*.xml',
         'envs/robotics/assets/hand/*.xml',
+        'envs/robotics/assets/states/*.pkl',
         'envs/robotics/assets/stls/fetch/*.stl',
         'envs/robotics/assets/stls/hand/*.stl',
         'envs/robotics/assets/textures/*.png']
