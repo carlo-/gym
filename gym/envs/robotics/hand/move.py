@@ -53,7 +53,8 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
         self.success_on_grasp_only = success_on_grasp_only
-        self.forearm_bounds = (np.r_[0.5, 0.3, 0.52], np.r_[1.75, 1.2, 1.1])
+        self.forearm_bounds = (np.r_[0.5, 0.3, 0.42], np.r_[1.75, 1.2, 1.1])
+        self.table_safe_bounds = (np.r_[1.10, 0.43], np.r_[1.49, 1.05])
 
         if isinstance(grasp_state, bool) and grasp_state:
             p = os.path.join(os.path.dirname(__file__), '../assets/states/grasp_state.pkl')
@@ -85,6 +86,42 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                                   relative_control=relative_control, arm_control=True)
         utils.EzPickle.__init__(self)
 
+    def get_object_contact_points(self):
+        if not self.has_object:
+            raise NotImplementedError("Cannot get object contact points in an environment without objects!")
+
+        sim = self.sim
+        object_name = 'object'
+        object_pos = self.sim.data.get_body_xpos(object_name)
+        object_rot = self.sim.data.get_body_xmat(object_name)
+        contact_points = []
+
+        # Partially from: https://gist.github.com/machinaut/209c44e8c55245c0d0f0094693053158
+        for i in range(sim.data.ncon):
+            # Note that the contact array has more than `ncon` entries,
+            # so be careful to only read the valid entries.
+            contact = sim.data.contact[i]
+            body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
+            body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
+
+            if body_name_1.startswith('robot0:') and body_name_2 == object_name or \
+               body_name_2.startswith('robot0:') and body_name_1 == object_name:
+
+                c_force = np.zeros(6, dtype=np.float64)
+                mujoco_py.functions.mj_contactForce(sim.model, sim.data, i, c_force)
+
+                # Compute contact point position wrt the object
+                rel_contact_pos = object_rot.T @ (contact.pos - object_pos)
+
+                contact_points.append(dict(
+                    body1=body_name_1,
+                    body2=body_name_2,
+                    relative_pos=rel_contact_pos,
+                    force=c_force
+                ))
+
+        return contact_points
+
     def _get_body_pose(self, body_name, no_rot=False, euler=False):
         if no_rot:
             rot = np.zeros(4)
@@ -104,6 +141,9 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
     def _get_palm_pose(self, no_rot=False):
         return self._get_site_pose('robot0:palm_center', no_rot)
+
+    def _get_grasp_center_pose(self, no_rot=False):
+        return self._get_site_pose('robot0:grasp_center', no_rot)
 
     def _get_object_pose(self):
         return self._get_body_pose('object')
@@ -189,7 +229,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
         # Move end effector into position.
         forearm_pos = np.array([1.05, 0.75, 0.65])
-        forearm_quat = rotations.euler2quat(np.r_[0., 1.97, 1.57])
+        forearm_quat = rotations.euler2quat(np.r_[0., 1.59, 1.57])
         self.sim.data.set_mocap_pos('robot0:mocap', forearm_pos)
         self.sim.data.set_mocap_quat('robot0:mocap', forearm_quat)
         for _ in range(10):
@@ -238,6 +278,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                 while np.linalg.norm(object_xpos - self.initial_palm_xpos[:2]) < 0.1:
                     offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
                     object_xpos = self.initial_palm_xpos[:2] + offset
+                object_xpos = np.clip(object_xpos, *self.table_safe_bounds)
             else:
                 object_xpos = self._get_palm_pose(no_rot=True)[:2]
                 object_xpos += self.np_random.uniform(-0.005, 0.005, size=2)  # always add small amount of noise
