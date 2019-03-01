@@ -69,7 +69,10 @@ def test_pick_and_place():
         done = env.step(action)[2]
         obj_pos = sim.data.get_body_xpos('object')
         if obj_pos[2] < 0.42:
-            raise RuntimeError('Object not on the table!')
+            print('Object not on the table!')
+            while True:
+                env.render()
+    print('test_pick_and_place PASSED')
 
 
 def test_arm_bounds():
@@ -84,11 +87,14 @@ def test_arm_bounds():
         obs, _, done, _ = env.step(action)
         if done or reached:
             if not reached:
-                raise RuntimeError('Arm could not reach the target!')
+                print('Arm could not reach the target!')
+                while True:
+                    env.render()
             obs = env.reset()
+    print('test_arm_bounds PASSED')
 
 
-def generate_grasp_state(max_states=20, file_path=None):
+def generate_grasp_state(max_states=20, file_path=None, render=False):
 
     env = gym.make(
         'HandPickAndPlace-v0',
@@ -101,7 +107,7 @@ def generate_grasp_state(max_states=20, file_path=None):
     obs, hand_ctrl, grasp_steps, env_steps, success_steps = (None,)*5
     reset = True
     found_states = []
-    max_env_steps = 50
+    max_env_steps = env.spec.max_episode_steps
 
     while len(found_states) < max_states:
 
@@ -119,18 +125,25 @@ def generate_grasp_state(max_states=20, file_path=None):
 
         action = np.zeros(env.action_space.shape)
         obj_pos = obs['achieved_goal'][:3]
-        d = obj_pos - env.unwrapped._get_palm_pose(no_rot=True)[:3]
+        d = obj_pos - env.unwrapped._get_grasp_center_pose(no_rot=True)[:3]
         reached = np.linalg.norm(d) < 0.05
+        on_palm = False
         dropped = obj_pos[2] < 0.40
 
         if dropped:
             reset = True
             continue
 
+        if reached:
+            contacts = env.unwrapped.get_object_contact_points()
+            palm_contacts = len([x for x in contacts if 'palm' in x['body1'] or 'palm' in x['body2']])
+            on_palm = palm_contacts > 0
+
+        wrist_ctrl = -1.0
         hand_ctrl[:] = -1.0
         hand_ctrl[13:] = (-1., 1., 1., -1., -1.)
-        arm_pos_ctrl = d * 0.5
-        if reached:
+        arm_pos_ctrl = d * 1.0
+        if on_palm:
             hand_ctrl[:] = 1.0
             hand_ctrl[13:] = (1., 1., 1., -1., -1.)
             arm_pos_ctrl *= 0.0
@@ -141,9 +154,12 @@ def generate_grasp_state(max_states=20, file_path=None):
         else:
             grasp_steps = 0
 
+        action[1] = wrist_ctrl
         action[-7:-4] = arm_pos_ctrl
         action[2:-7] = hand_ctrl
         obs, reward, _, _ = env.step(action)
+        if render:
+            env.render()
         if reward == 0.0:
             success_steps += 1
             if success_steps >= 20:
