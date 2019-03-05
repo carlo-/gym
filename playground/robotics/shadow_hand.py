@@ -8,7 +8,7 @@ import gym
 from gym.utils.mjviewer import add_selection_logger
 
 from playground.utils import wait_for_key
-from playground.agents import HandPickAndPlaceAgent
+from gym.agents.shadow_hand import HandPickAndPlaceAgent
 
 selected_action = None
 
