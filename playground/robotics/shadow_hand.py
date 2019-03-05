@@ -8,6 +8,7 @@ import gym
 from gym.utils.mjviewer import add_selection_logger
 
 from playground.utils import wait_for_key
+from playground.agents import HandPickAndPlaceAgent
 
 selected_action = None
 
@@ -104,6 +105,7 @@ def generate_grasp_state(max_states=20, file_path=None, render=False):
         randomize_initial_object_pos=False
     )
 
+    agent = HandPickAndPlaceAgent(env)
     obs, hand_ctrl, grasp_steps, env_steps, success_steps = (None,)*5
     reset = True
     found_states = []
@@ -113,8 +115,6 @@ def generate_grasp_state(max_states=20, file_path=None, render=False):
 
         if reset:
             obs = env.reset()
-            hand_ctrl = np.zeros(18)
-            grasp_steps = 0
             success_steps = 0
             env_steps = 0
             reset = False
@@ -123,40 +123,7 @@ def generate_grasp_state(max_states=20, file_path=None, render=False):
             reset = True
             continue
 
-        action = np.zeros(env.action_space.shape)
-        obj_pos = obs['achieved_goal'][:3]
-        d = obj_pos - env.unwrapped._get_grasp_center_pose(no_rot=True)[:3]
-        reached = np.linalg.norm(d) < 0.05
-        on_palm = False
-        dropped = obj_pos[2] < 0.40
-
-        if dropped:
-            reset = True
-            continue
-
-        if reached:
-            contacts = env.unwrapped.get_object_contact_points()
-            palm_contacts = len([x for x in contacts if 'palm' in x['body1'] or 'palm' in x['body2']])
-            on_palm = palm_contacts > 0
-
-        wrist_ctrl = -1.0
-        hand_ctrl[:] = -1.0
-        hand_ctrl[13:] = (-1., 1., 1., -1., -1.)
-        arm_pos_ctrl = d * 1.0
-        if on_palm:
-            hand_ctrl[:] = 1.0
-            hand_ctrl[13:] = (1., 1., 1., -1., -1.)
-            arm_pos_ctrl *= 0.0
-            grasp_steps += 1
-            if grasp_steps > 10:
-                d = obs['desired_goal'][:3] - obs['achieved_goal'][:3]
-                arm_pos_ctrl = d * 0.5
-        else:
-            grasp_steps = 0
-
-        action[1] = wrist_ctrl
-        action[-7:-4] = arm_pos_ctrl
-        action[2:-7] = hand_ctrl
+        action = agent.predict(obs)
         obs, reward, _, _ = env.step(action)
         if render:
             env.render()
