@@ -35,14 +35,19 @@ def _goal_distance(goal_a, goal_b, ignore_target_rotation):
     return d_pos, d_rot
 
 
+def _check_range(a, a_min, a_max, include_bounds=True):
+    if include_bounds:
+        return np.all((a_min <= a) & (a <= a_max))
+    else:
+        return np.all((a_min < a) & (a < a_max))
+
+
 class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
                  success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0):
 
-        self.object_range = 0.15
-        self.target_range = 0.15
         self.target_in_the_air = True
         self.has_object = has_object
         self.ignore_target_rotation = ignore_target_rotation
@@ -55,6 +60,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.success_on_grasp_only = success_on_grasp_only
         self.forearm_bounds = (np.r_[0.5, 0.3, 0.42], np.r_[1.75, 1.2, 1.1])
         self.table_safe_bounds = (np.r_[1.10, 0.43], np.r_[1.49, 1.05])
+        self._initial_arm_mocap_pose = np.r_[1.05, 0.75, 0.65, rotations.euler2quat(np.r_[0., 1.59, 1.57])]
 
         if isinstance(grasp_state, bool) and grasp_state:
             p = os.path.join(os.path.dirname(__file__), '../assets/states/grasp_state.pkl')
@@ -228,15 +234,10 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.sim.forward()
 
         # Move end effector into position.
-        forearm_pos = np.array([1.05, 0.75, 0.65])
-        forearm_quat = rotations.euler2quat(np.r_[0., 1.59, 1.57])
-        self.sim.data.set_mocap_pos('robot0:mocap', forearm_pos)
-        self.sim.data.set_mocap_quat('robot0:mocap', forearm_quat)
+        self._set_arm_pose(self._initial_arm_mocap_pose.copy())
         for _ in range(10):
             self.sim.step()
 
-        self.initial_arm_xpos = self.sim.data.get_body_xpos('robot0:forearm').copy()
-        self.initial_palm_xpos = self._get_palm_pose(no_rot=True)[:3]
         if self.has_object:
             self.height_offset = self.sim.data.get_site_xpos('object:center')[2]
 
@@ -251,50 +252,64 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
 
     def _reset_sim(self):
         reset_to_grasp_state = self.grasp_state_reset_p > self.np_random.uniform()
-        if reset_to_grasp_state:
-            self.sim.set_state(self.grasp_state)
-            # Fix hand ctrl so that fingers stay close while we update the arm position later
-            rel_ctrl = self.relative_control
-            self.relative_control = True
-            self._set_action(np.zeros(self.action_space.shape))
-            self.relative_control = rel_ctrl
-        else:
-            self.sim.set_state(self.initial_state)
 
-        # Randomize initial position of arm.
-        if self.randomize_initial_arm_pos:
-            new_arm_pos = self.initial_arm_xpos.copy()
-            new_arm_pos[:2] += self.np_random.uniform(-0.2, 0.2, size=2)
-            self._set_arm_pose(new_arm_pos)
+        while True:
+            if reset_to_grasp_state:
+                assert self.has_object
+                self.sim.set_state(self.grasp_state)
+                # Fix hand ctrl so that fingers stay close while we update the arm position later
+                rel_ctrl = self.relative_control
+                self.relative_control = True
+                self._set_action(np.zeros(self.action_space.shape))
+                self.relative_control = rel_ctrl
+            else:
+                self.sim.set_state(self.initial_state)
+
+            # Reset initial position of arm.
+            new_arm_pose = self._initial_arm_mocap_pose.copy()
+            if self.randomize_initial_arm_pos:
+                new_arm_pose[:2] += self.np_random.uniform(-0.2, 0.2, size=2)
+            self._set_arm_pose(new_arm_pose)
             for _ in range(10):
                 self.sim.step()
 
-        # Randomize initial position of object.
-        if self.has_object and not reset_to_grasp_state:
-            object_qpos = self.sim.data.get_joint_qpos('object:joint').copy()
+            # Randomize initial position of object.
+            if self.has_object and not reset_to_grasp_state:
+                object_qpos = self.sim.data.get_joint_qpos('object:joint').copy()
 
-            if self.randomize_initial_object_pos:
-                object_xpos = self.initial_palm_xpos[:2]
-                while np.linalg.norm(object_xpos - self.initial_palm_xpos[:2]) < 0.1:
-                    offset = self.np_random.uniform(-self.object_range, self.object_range, size=2)
-                    object_xpos = self.initial_palm_xpos[:2] + offset
-                object_xpos = np.clip(object_xpos, *self.table_safe_bounds)
+                if self.randomize_initial_object_pos:
+                    object_xpos = self.np_random.uniform(*self.table_safe_bounds)
+                else:
+                    object_xpos = self._get_palm_pose(no_rot=True)[:2]
+                    object_xpos += self.np_random.uniform(-0.005, 0.005, size=2)  # always add small amount of noise
+
+                object_qpos[:2] = object_xpos
+                self.sim.data.set_joint_qpos('object:joint', object_qpos)
+
+            self.sim.forward()
+            if not self.has_object:
+                break
             else:
-                object_xpos = self._get_palm_pose(no_rot=True)[:2]
-                object_xpos += self.np_random.uniform(-0.005, 0.005, size=2)  # always add small amount of noise
-
-            object_qpos[:2] = object_xpos
-            self.sim.data.set_joint_qpos('object:joint', object_qpos)
-
-        self.sim.forward()
+                object_pos = self._get_object_pose()[:3]
+                object_vel = self.sim.data.get_joint_qvel('object:joint')
+                object_still = np.linalg.norm(object_vel) < 0.8
+                if reset_to_grasp_state:
+                    palm_pos = self._get_palm_pose(no_rot=True)[:3]
+                    object_on_palm = np.linalg.norm(object_pos - palm_pos) < 0.08
+                    if object_still and object_on_palm:
+                        break
+                else:
+                    object_on_table = _check_range(object_pos[:2], *self.table_safe_bounds)
+                    if object_still and object_on_table:
+                        break
         return True
 
     def _sample_goal(self):
-        goal = self.initial_arm_xpos[:3] + self.np_random.uniform(-self.target_range, self.target_range, size=3)
+        goal = np.r_[self.np_random.uniform(*self.table_safe_bounds), 0.0]
         if self.has_object:
             goal[2] = self.height_offset
-            if self.target_in_the_air and self.np_random.uniform() < 0.5:
-                goal[2] += self.np_random.uniform(0, 0.45)
+        if self.target_in_the_air and self.np_random.uniform() < 0.5:
+            goal[2] += self.np_random.uniform(0, 0.45)
         goal = np.r_[goal, np.zeros(4)]
         if self.success_on_grasp_only:
             goal = np.r_[goal, 0.]

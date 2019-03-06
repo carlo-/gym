@@ -172,6 +172,30 @@ def generate_grasp_state(max_states=20, file_path=None, render=False):
     return None
 
 
+def render_reset_states():
+    env = gym.make(
+        'HandPickAndPlace-v0',
+        ignore_rotation_ctrl=True,
+        ignore_target_rotation=True,
+        success_on_grasp_only=True,
+        randomize_initial_arm_pos=True,
+        randomize_initial_object_pos=True,
+        grasp_state=True,
+        grasp_state_reset_p=0.5
+    )
+    on_palm_count = 0
+    for i in it.count():
+        env.reset()
+        env.render()
+        object_pos = env.unwrapped._get_object_pose()[:3]
+        palm_pos = env.unwrapped._get_palm_pose(no_rot=True)[:3]
+        object_on_palm = np.linalg.norm(object_pos - palm_pos) < 0.08
+        on_palm_count += int(object_on_palm)
+        print(f'On palm p: {on_palm_count/(i+1)}')
+        env.step(env.action_space.sample()*0.0)
+        env.render()
+
+
 def main():
     # env = gym.make('HandPickAndPlaceDense-v0')
     env = gym.make(
