@@ -46,9 +46,9 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
-                 success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0):
+                 success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0, target_in_the_air_p=0.5):
 
-        self.target_in_the_air = True
+        self.target_in_the_air_p = target_in_the_air_p
         self.has_object = has_object
         self.ignore_target_rotation = ignore_target_rotation
         self.randomize_initial_arm_pos = randomize_initial_arm_pos
@@ -308,7 +308,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         goal = np.r_[self.np_random.uniform(*self.table_safe_bounds), 0.0]
         if self.has_object:
             goal[2] = self.height_offset
-        if self.target_in_the_air and self.np_random.uniform() < 0.5:
+        if self.np_random.uniform() < self.target_in_the_air_p:
             goal[2] += self.np_random.uniform(0, 0.45)
         goal = np.r_[goal, np.zeros(4)]
         if self.success_on_grasp_only:
