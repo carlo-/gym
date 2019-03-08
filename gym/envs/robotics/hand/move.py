@@ -184,6 +184,9 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def compute_reward(self, achieved_goal: np.ndarray, goal: np.ndarray, info: dict):
         if self.reward_type == 'sparse':
             success = self._is_success(achieved_goal, goal).astype(np.float32)
+            weights = (info or dict()).get('weights')
+            if weights is not None:
+                success *= weights
             return success - 1.
         else:
             d_pos, d_rot = _goal_distance(achieved_goal, goal, self.ignore_target_rotation)
