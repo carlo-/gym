@@ -149,7 +149,11 @@ class FetchEnv(robot_env.RobotEnv):
                 d += (grp_goal_d ** k) * c
 
         if self.reward_type == 'sparse':
-            return -(d > self.distance_threshold).astype(np.float32)
+            success = (d < self.distance_threshold).astype(np.float32)
+            weights = (info or dict()).get('weights')
+            if weights is not None:
+                success *= weights
+            return success - 1
         else:
             return -d
 
