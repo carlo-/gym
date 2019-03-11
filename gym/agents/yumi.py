@@ -18,6 +18,9 @@ class YumiReachAgent(object):
         self._goal = None
         self._robot = YumiEnv.get_urdf_model()
         self._kdl = PyKDL
+
+        # make sure the simulator is ready before getting the transforms
+        self._sim.forward()
         self._base_offset = self._sim.data.get_body_xpos('yumi_base_link').copy()
 
         kdl_tree = kdl_tree_from_urdf_model(self._robot)
