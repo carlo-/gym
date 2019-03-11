@@ -466,24 +466,21 @@ for reward_type in ['sparse', 'dense']:
 # ----------------------------------------
 
 register(
-    id='YumiRightArm-v0',
-    entry_point='gym.envs.yumi:YumiRightArmEnv',
-    max_episode_steps=1000,
-    reward_threshold=25.0,
+    id='YumiReachRightArm-v0',
+    entry_point='gym.envs.yumi:YumiReachRightArmEnv',
+    max_episode_steps=300,
 )
 
 register(
-    id='YumiLeftArm-v0',
-    entry_point='gym.envs.yumi:YumiLeftArmEnv',
-    max_episode_steps=1000,
-    reward_threshold=25.0,
+    id='YumiReachLeftArm-v0',
+    entry_point='gym.envs.yumi:YumiReachLeftArmEnv',
+    max_episode_steps=300,
 )
 
 register(
-    id='YumiTwoArms-v0',
-    entry_point='gym.envs.yumi:YumiTwoArmsEnv',
-    max_episode_steps=1000,
-    reward_threshold=25.0,
+    id='YumiReachTwoArms-v0',
+    entry_point='gym.envs.yumi:YumiReachTwoArmsEnv',
+    max_episode_steps=300,
 )
 
 # Atari

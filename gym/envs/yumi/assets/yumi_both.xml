@@ -7,7 +7,15 @@
     </contact>
 
     <worldbody>
-        <geom rgba="1 1 1 1" name="table" type="box" pos="0 0 -0.01" size="0.4 0.5 0.01"/>
+
+        <body name="floor" pos="0 0 0">
+			<site name="target_l" pos="0 0.1 0.5" size="0.02 0.02 0.02" rgba="0 1 0 1" type="sphere"/>
+			<site name="target_r" pos="0 -0.1 0.5" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"/>
+		</body>
+
+		<body pos="0 0 -0.01" name="table">
+            <geom rgba="1 1 1 1" name="table" type="box" pos="0 0 0" size="0.4 0.5 0.01"/>
+        </body>
 
         <body name="yumi_base_link" pos="-0.4 0 0">
             <inertial pos="0 0 0" mass="0" diaginertia="0 0 0" />
@@ -19,35 +27,28 @@
             </body>
         </body>
 
-        <body name="goal" pos="0.0 0.0 0.0">
-            <geom rgba="0 0 1 0.5" type="sphere" size="0.05 0.001 0.1" density='0.00001'/>
-            <joint name="goal_slidex" type="slide" pos="0 0 0" axis="1 0 0" range="-10.3213 10.3" damping="1.0"/>
-            <joint name="goal_slidey" type="slide" pos="0 0 0" axis="0 1 0" range="-10.3213 10.3" damping="1.0"/>
-            <joint name="goal_slidez" type="slide" pos="0 0 0" axis="0 0 1" range="-10.3213 10.3" damping="1.0"/>
-        </body>
-
         <light directional="true" ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3" castshadow="false" pos="0 0 4" dir="0 0 -1" name="light0"/>
     </worldbody>
 
     <actuator>
-        <motor joint="yumi_joint_1_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_2_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_7_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_3_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_4_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_5_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_6_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_1_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_2_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_7_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_3_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_4_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_5_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_6_l" ctrlrange="-100.0 100.0" ctrllimited="true"/>
 
         <position joint="gripper_l_joint" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
 		<position joint="gripper_l_joint_m" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
 
-        <motor joint="yumi_joint_1_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_2_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_7_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_3_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_4_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_5_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
-        <motor joint="yumi_joint_6_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_1_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_2_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_7_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_3_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_4_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_5_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
+        <position joint="yumi_joint_6_r" ctrlrange="-100.0 100.0" ctrllimited="true"/>
 
 		<position joint="gripper_r_joint" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
 		<position joint="gripper_r_joint_m" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
