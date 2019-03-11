@@ -43,7 +43,10 @@ setup(name='gym',
         'envs/robotics/assets/states/*.pkl',
         'envs/robotics/assets/stls/fetch/*.stl',
         'envs/robotics/assets/stls/hand/*.stl',
-        'envs/robotics/assets/textures/*.png']
+        'envs/robotics/assets/textures/*.png',
+        'envs/yumi/assets/*.xml',
+        'envs/yumi/assets/stls/*.stl',
+        'envs/yumi/assets/misc/*']
       },
       tests_require=['pytest', 'mock'],
 )
