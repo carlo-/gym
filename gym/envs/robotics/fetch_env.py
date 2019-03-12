@@ -130,15 +130,21 @@ class FetchEnv(robot_env.RobotEnv):
                 assert self.reward_type == 'dense'
                 # actual dist between fingers
                 fingers_dist = grp_state.sum()
-                grp_close_to_obj = (goal_distance(grp_pos, obj_pos) < 0.10).astype(np.float32)
+                grp_close_to_obj = (goal_distance(grp_pos, obj_pos) < 0.12).astype(np.float32)
+                obj_close_to_goal = (d < 0.12).astype(np.float32)
+                grp_around_obj = (goal_distance(grp_pos, obj_pos) < 0.04).astype(np.float32)
                 grp_above_table = float(grp_pos[2] > 0.43)
+                obj_above_table = float(obj_pos[2] > 0.44)
                 grasped = float(abs(0.05 - fingers_dist) < 0.005 and len(self.get_object_contact_points()) > 2)
 
                 d = -(
-                    grp_above_table * 0.1 +
-                    grp_close_to_obj * 0.3 +
-                    grasped * 0.7 +
-                    success * 2.0
+                    grp_above_table * 0.05 +
+                    grp_close_to_obj * 0.4 +
+                    grp_around_obj * 0.7 +
+                    grasped * 1.0 +
+                    grasped * obj_close_to_goal * 0.5 +
+                    grasped * obj_above_table * 0.4 +
+                    success * 10.0
                 )
 
             else:

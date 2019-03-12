@@ -3,9 +3,9 @@ from time import sleep
 import itertools as it
 
 import numpy as np
-import mujoco_py
 import gym
 from gym.envs.robotics import FetchEnv
+from gym.utils.mjviewer import add_selection_logger
 
 from playground.utils import wait_for_key
 
@@ -45,11 +45,12 @@ def action_thread():
 
 
 def main():
-    env = gym.make('FetchPickAndPlaceEasyDense-v1')
+    env = gym.make('FetchPickAndPlaceDense-v1')
     raw_env = env.unwrapped # type: FetchEnv
-    # raw_env.reward_params = dict(k=1.0, c=1.0, grasp_bonus=2.0)
-    raw_env.reward_params = dict(huber_loss=True)
+    raw_env.reward_params = dict(stepped=True)
     sim = raw_env.sim
+    env.render()
+    add_selection_logger(raw_env.viewer, sim)
 
     global selected_action
     p = Thread(target=action_thread)
