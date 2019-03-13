@@ -45,9 +45,12 @@ def action_thread():
 
 
 def main():
-    env = gym.make('FetchPickAndPlaceDense-v1')
+    env = gym.make(
+        'FetchPickAndPlaceDense-v1',
+        reward_params=dict(stepped=True),
+        explicit_goal_distance=True
+    )
     raw_env = env.unwrapped # type: FetchEnv
-    raw_env.reward_params = dict(stepped=True)
     sim = raw_env.sim
     env.render()
     add_selection_logger(raw_env.viewer, sim)

@@ -25,7 +25,7 @@ class FetchEnv(robot_env.RobotEnv):
     def __init__(
         self, model_path, n_substeps, gripper_extra_height, block_gripper,
         has_object, target_in_the_air, target_offset, obj_range, target_range,
-        distance_threshold, initial_qpos, reward_type,
+        distance_threshold, initial_qpos, reward_type, reward_params=None, explicit_goal_distance=False
     ):
         """Initializes a new Fetch environment.
 
@@ -42,6 +42,8 @@ class FetchEnv(robot_env.RobotEnv):
             distance_threshold (float): the threshold after which a goal is considered achieved
             initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
             reward_type ('sparse' or 'dense'): the reward type, i.e. sparse or dense
+            reward_params (dict): parameters for custom reward functions
+            explicit_goal_distance (boolean): whether or not the observations should include the distance to the goal
         """
         self.gripper_extra_height = gripper_extra_height
         self.block_gripper = block_gripper
@@ -51,7 +53,8 @@ class FetchEnv(robot_env.RobotEnv):
         self.target_range = target_range
         self.distance_threshold = distance_threshold
         self.reward_type = reward_type
-        self.reward_params = None
+        self.reward_params = reward_params
+        self.explicit_goal_distance = explicit_goal_distance
 
         if isinstance(obj_range, Sequence):
             assert len(obj_range) == 2, obj_range[0] <= obj_range[1]
@@ -66,7 +69,7 @@ class FetchEnv(robot_env.RobotEnv):
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
             initial_qpos=initial_qpos)
 
-    def get_object_contact_points(self):
+    def get_object_contact_points(self, other_body='robot0:'):
         if not self.has_object:
             raise NotImplementedError("Cannot get object contact points in an environment without objects!")
 
@@ -84,7 +87,8 @@ class FetchEnv(robot_env.RobotEnv):
             body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
             body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
 
-            if body_name_1.startswith('robot0:') and body_name_2 == object_name:
+            if (other_body in body_name_1 and body_name_2 == object_name) or \
+               (other_body in body_name_2 and body_name_1 == object_name):
 
                 c_force = np.zeros(6, dtype=np.float64)
                 mujoco_py.functions.mj_contactForce(sim.model, sim.data, i, c_force)
@@ -134,7 +138,7 @@ class FetchEnv(robot_env.RobotEnv):
                 obj_close_to_goal = (d < 0.12).astype(np.float32)
                 grp_around_obj = (goal_distance(grp_pos, obj_pos) < 0.04).astype(np.float32)
                 grp_above_table = float(grp_pos[2] > 0.43)
-                obj_above_table = float(obj_pos[2] > 0.44)
+                obj_above_table = float(obj_pos[2] > 0.427)
                 grasped = float(abs(0.05 - fingers_dist) < 0.005 and len(self.get_object_contact_points()) > 2)
 
                 d = -(
@@ -229,17 +233,18 @@ class FetchEnv(robot_env.RobotEnv):
             achieved_goal = grip_pos.copy()
         else:
             achieved_goal = np.squeeze(object_pos.copy())
+        desired_goal = self.goal.copy()
+
+        explicit_goal_d = np.zeros(0)
+        if self.explicit_goal_distance:
+            explicit_goal_d = desired_goal - achieved_goal
+
         obs = np.concatenate([
             grip_pos, object_pos.ravel(), object_rel_pos.ravel(), gripper_state, object_rot.ravel(),
-            object_velp.ravel(), object_velr.ravel(), grip_velp, gripper_vel,
+            object_velp.ravel(), object_velr.ravel(), grip_velp, gripper_vel, explicit_goal_d,
         ])
 
-        obs_dict = {
-            'observation': obs.copy(),
-            'achieved_goal': achieved_goal.copy(),
-            'desired_goal': self.goal.copy(),
-        }
-
+        obs_dict = {'observation': obs, 'achieved_goal': achieved_goal, 'desired_goal': desired_goal}
         if self.reward_params is not None:
             obs_dict['info'] = {
                 'gripper_pos': grip_pos.copy(),
