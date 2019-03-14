@@ -100,35 +100,51 @@ class YumiEnv(RobotEnv):
         arm_l_qpos = np.zeros(0)
         arm_l_qvel = np.zeros(0)
         gripper_l_qpos = np.zeros(0)
+        gripper_l_pos = np.zeros(0)
 
         arm_r_qpos = np.zeros(0)
         arm_r_qvel = np.zeros(0)
         gripper_r_qpos = np.zeros(0)
+        gripper_r_pos = np.zeros(0)
 
-        if self._arm_l_joint_idx is not None:
+        if self.has_left_arm:
             arm_l_qpos = self.sim.data.qpos[self._arm_l_joint_idx]
             arm_l_qvel = self.sim.data.qvel[self._arm_l_joint_idx]
             arm_l_qvel = np.clip(arm_l_qvel, -10, 10)
+            gripper_l_pos = self.sim.data.get_site_xpos('gripper_l_center').copy()
 
         if self._gripper_l_joint_idx is not None:
             gripper_l_qpos = self.sim.data.qpos[self._gripper_l_joint_idx]
 
-        if self._arm_r_joint_idx is not None:
+        if self.has_right_arm:
             arm_r_qpos = self.sim.data.qpos[self._arm_r_joint_idx]
             arm_r_qvel = self.sim.data.qvel[self._arm_r_joint_idx]
             arm_r_qvel = np.clip(arm_r_qvel, -10, 10)
+            gripper_r_pos = self.sim.data.get_site_xpos('gripper_r_center').copy()
 
         if self._gripper_r_joint_idx is not None:
             gripper_r_qpos = self.sim.data.qpos[self._gripper_r_joint_idx]
 
+        if self.has_object:
+            # Achieved goal is object position
+            raise NotImplementedError
+        else:
+            # Achieved goal is gripper(s) position(s)
+            achieved_goal = np.zeros(6)
+            if self.has_left_arm:
+                achieved_goal[:3] = gripper_l_pos.copy()
+            if self.has_right_arm:
+                achieved_goal[3:] = gripper_r_pos.copy()
+
         obs = np.concatenate([
             arm_l_qpos, arm_l_qvel, gripper_l_qpos,
-            arm_r_qpos, arm_r_qvel, gripper_r_qpos
+            arm_r_qpos, arm_r_qvel, gripper_r_qpos,
+            gripper_l_pos, gripper_r_pos
         ])
 
         return {
             'observation': obs,
-            'achieved_goal': self._get_achieved_goal(),
+            'achieved_goal': achieved_goal,
             'desired_goal': self.goal.copy(),
         }
 
@@ -198,8 +214,8 @@ class YumiEnv(RobotEnv):
             self._initial_r_gripper_pos = self.sim.data.get_site_xpos('gripper_r_center').copy()
 
     def _viewer_setup(self):
-        self.viewer.cam.distance = 2.0
-        self.viewer.cam.elevation = -30
+        self.viewer.cam.distance = 1.7
+        self.viewer.cam.elevation = -20
         self.viewer.cam.azimuth = 180
 
     def _render_callback(self):
@@ -215,19 +231,6 @@ class YumiEnv(RobotEnv):
 
     # Utilities
     # ----------------------------
-
-    def _get_achieved_goal(self):
-        if self.has_object:
-            # Achieved goal is object position
-            raise NotImplementedError
-        else:
-            # Achieved goal is gripper(s) position(s)
-            ag = np.zeros(6)
-            if self.has_left_arm:
-                ag[:3] = self.sim.data.get_site_xpos('gripper_l_center').copy()
-            if self.has_right_arm:
-                ag[3:] = self.sim.data.get_site_xpos('gripper_r_center').copy()
-            return ag
 
     @staticmethod
     def get_urdf_model():
@@ -268,22 +271,24 @@ class YumiEnv(RobotEnv):
         self.sim.forward()
 
 
-class YumiReachRightArmEnv(YumiEnv, EzPickle):
+class YumiReachEnv(YumiEnv, EzPickle):
     def __init__(self, **kwargs):
-        super().__init__(arm='right', block_gripper=True, reward_type='sparse',
-                         distance_threshold=0.05, has_object=False, **kwargs)
+        default_kwargs = dict(block_gripper=True, reward_type='sparse', distance_threshold=0.05)
+        merged = {**default_kwargs, **kwargs}
+        super().__init__(has_object=False, **merged)
         EzPickle.__init__(self)
 
 
-class YumiReachLeftArmEnv(YumiEnv, EzPickle):
+class YumiReachRightArmEnv(YumiReachEnv):
     def __init__(self, **kwargs):
-        super().__init__(arm='left', block_gripper=True, reward_type='sparse',
-                         distance_threshold=0.05, has_object=False, **kwargs)
-        EzPickle.__init__(self)
+        super().__init__(arm='right', **kwargs)
 
 
-class YumiReachTwoArmsEnv(YumiEnv, EzPickle):
+class YumiReachLeftArmEnv(YumiReachEnv):
     def __init__(self, **kwargs):
-        super().__init__(arm='both', block_gripper=True, reward_type='sparse',
-                         distance_threshold=0.05, has_object=False, **kwargs)
-        EzPickle.__init__(self)
+        super().__init__(arm='left', **kwargs)
+
+
+class YumiReachTwoArmsEnv(YumiReachEnv):
+    def __init__(self, **kwargs):
+        super().__init__(arm='both', **kwargs)
