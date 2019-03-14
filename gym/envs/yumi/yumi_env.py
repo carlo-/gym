@@ -45,7 +45,7 @@ class YumiEnv(RobotEnv):
         self._ctrl_low = -ctrl_high
 
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
-        super(YumiEnv, self).__init__(model_path=model_path, n_substeps=1,
+        super(YumiEnv, self).__init__(model_path=model_path, n_substeps=2,
                                       n_actions=ctrl_high.size, initial_qpos=None)
 
     # GoalEnv methods
