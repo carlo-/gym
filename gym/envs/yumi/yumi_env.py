@@ -63,9 +63,13 @@ class YumiEnv(RobotEnv):
             if self.has_object:
                 raise NotImplementedError
             else:
-                rew = float(self.has_left_arm) * self._is_success(achieved_goal[..., :3], desired_goal[..., :3])
-                rew += float(self.has_right_arm) * self._is_success(achieved_goal[..., 3:], desired_goal[..., 3:])
-                return rew
+                success_l = float(self.has_left_arm) * self._is_success(achieved_goal[..., :3], desired_goal[..., :3])
+                success_r = float(self.has_right_arm) * self._is_success(achieved_goal[..., 3:], desired_goal[..., 3:])
+                if self.has_two_arms:
+                    success = success_l * success_r
+                else:
+                    success = success_l + success_r
+                return success - 1
         else:
             d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
             return -d
