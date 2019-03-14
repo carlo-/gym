@@ -1,10 +1,18 @@
 import os
+import copy
 
 import mujoco_py
 import numpy as np
 from gym.utils import EzPickle
 from gym.envs.robotics.robot_env import RobotEnv
 from gym.envs.robotics.utils import ctrl_set_action
+
+
+def _check_range(a, a_min, a_max, include_bounds=True):
+    if include_bounds:
+        return np.all((a_min <= a) & (a <= a_max))
+    else:
+        return np.all((a_min < a) & (a < a_max))
 
 
 class YumiEnv(RobotEnv):
@@ -23,11 +31,9 @@ class YumiEnv(RobotEnv):
         self.has_object = has_object
         self.distance_threshold = distance_threshold
 
-        self._table_safe_bounds = (np.r_[-0.27, -0.33], np.r_[0.17, 0.33])
-        self._reach_bounds_l = (np.r_[-0.27, -0.05, 0.], np.r_[0.17, 0.33, 0.6])
-        self._reach_bounds_r = (np.r_[-0.27, -0.33, 0.], np.r_[0.17, 0.05, 0.6])
-        self._target_bounds_l = (np.r_[-0.27, 0.05, 0.05], np.r_[0.17, 0.33, 0.4])
-        self._target_bounds_r = (np.r_[-0.27, -0.28, 0.05], np.r_[0.17, 0.05, 0.4])
+        self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
+        self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
+        self._target_bounds_r = (np.r_[-0.20, -0.43, 0.05], np.r_[0.35, -0.07, 0.6])
 
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
@@ -70,29 +76,27 @@ class YumiEnv(RobotEnv):
     def _reset_sim(self):
         pos_low = np.r_[-1.0, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
         pos_high = np.r_[0.4,  0.6,  0.4,  0.4,  0.3,  0.3,  0.3]
-        vel_high = np.zeros(7)
-        vel_low = -vel_high
+
+        qpos = self.init_qpos.copy()
+        qvel = self.init_qvel.copy()
 
         if self._arm_l_joint_idx is not None:
-            self.init_qpos[self._arm_l_joint_idx] = np.random.uniform(pos_low, pos_high)
-            self.init_qvel[self._arm_l_joint_idx] = np.random.uniform(vel_low, vel_high)
+            self.init_qpos[self._arm_l_joint_idx] = self.np_random.uniform(pos_low, pos_high)
+            self.init_qvel[self._arm_l_joint_idx] = 0.0
 
         if self._gripper_l_joint_idx is not None:
             self.init_qpos[self._gripper_l_joint_idx] = 0.0
             self.init_qvel[self._gripper_l_joint_idx] = 0.0
 
         if self._arm_r_joint_idx is not None:
-            self.init_qpos[self._arm_r_joint_idx] = np.random.uniform(pos_low, pos_high)
-            self.init_qvel[self._arm_r_joint_idx] = np.random.uniform(vel_low, vel_high)
+            self.init_qpos[self._arm_r_joint_idx] = self.np_random.uniform(pos_low, pos_high)
+            self.init_qvel[self._arm_r_joint_idx] = 0.0
 
         if self._gripper_r_joint_idx is not None:
             self.init_qpos[self._gripper_r_joint_idx] = 0.0
             self.init_qvel[self._gripper_r_joint_idx] = 0.0
 
-        # self.init_qpos *= 0.0
-        # self.init_qvel *= 0.0
-
-        self._set_sim_state(self.init_qpos, self.init_qvel)
+        self._set_sim_state(qpos, qvel)
         return True
 
     def _get_obs(self):
@@ -180,10 +184,23 @@ class YumiEnv(RobotEnv):
         else:
             # Goal is gripper(s) target position(s)
             new_goal = np.zeros(6)
+            old_state = copy.deepcopy(self.sim.get_state())
             if self.has_left_arm:
-                new_goal[:3] = self.np_random.uniform(*self._target_bounds_l)
+                while True:
+                    left_arm_q = self._sample_safe_qpos(self._arm_l_joint_idx)
+                    grp_l_pos = self._fk_position(left_arm_q=left_arm_q, restore_state=False)
+                    if _check_range(grp_l_pos, *self._target_bounds_l):
+                        new_goal[:3] = grp_l_pos
+                        break
             if self.has_right_arm:
-                new_goal[3:] = self.np_random.uniform(*self._target_bounds_r)
+                while True:
+                    right_arm_q = self._sample_safe_qpos(self._arm_r_joint_idx)
+                    grp_r_pos = self._fk_position(right_arm_q=right_arm_q, restore_state=False)
+                    if _check_range(grp_r_pos, *self._target_bounds_r):
+                        new_goal[3:] = grp_r_pos
+                        break
+            self.sim.set_state(old_state)
+            self.sim.forward()
         return new_goal
 
     def _env_setup(self, initial_qpos):
@@ -269,6 +286,34 @@ class YumiEnv(RobotEnv):
                                          old_state.act, old_state.udd_state)
         self.sim.set_state(new_state)
         self.sim.forward()
+
+    def _sample_safe_qpos(self, arm_joint_idx):
+        margin = np.pi/6
+        jnt_range = self.sim.model.jnt_range[arm_joint_idx].copy()
+        jnt_range[:, 0] += margin
+        jnt_range[:, 1] -= margin
+        return self.np_random.uniform(*jnt_range.T)
+
+    def _fk_position(self, left_arm_q=None, right_arm_q=None, restore_state=True):
+        grp_pos, old_state = None, None
+        if restore_state:
+            old_state = copy.deepcopy(self.sim.get_state())
+        if left_arm_q is not None:
+            assert right_arm_q is None
+            idx = self.sim.model.jnt_qposadr[self._arm_l_joint_idx]
+            self.sim.data.qpos[idx] = left_arm_q
+            self.sim.forward()
+            grp_pos = self.sim.data.get_site_xpos('gripper_l_center').copy()
+        if right_arm_q is not None:
+            assert left_arm_q is None
+            idx = self.sim.model.jnt_qposadr[self._arm_r_joint_idx]
+            self.sim.data.qpos[idx] = right_arm_q
+            self.sim.forward()
+            grp_pos = self.sim.data.get_site_xpos('gripper_r_center').copy()
+        if restore_state:
+            self.sim.set_state(old_state)
+            self.sim.forward()
+        return grp_pos
 
 
 class YumiReachEnv(YumiEnv, EzPickle):
