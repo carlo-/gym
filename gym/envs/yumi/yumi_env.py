@@ -65,11 +65,11 @@ class YumiEnv(RobotEnv):
             else:
                 success_l = float(self.has_left_arm) * self._is_success(achieved_goal[..., :3], desired_goal[..., :3])
                 success_r = float(self.has_right_arm) * self._is_success(achieved_goal[..., 3:], desired_goal[..., 3:])
+                success = success_l + success_r
                 if self.has_two_arms:
-                    success = success_l * success_r
+                    return success - 2
                 else:
-                    success = success_l + success_r
-                return success - 1
+                    return success - 1
         else:
             d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
             return -d
