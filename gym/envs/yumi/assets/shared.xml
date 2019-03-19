@@ -3,8 +3,21 @@
     <option timestep="0.005" integrator="Euler" />
     <size njmax="500" nconmax="200" />
 
+    <default>
+        <default class="yumi_arm_class">
+            <joint armature="80" damping="1000"/>
+
+            <default class="yumi_gripper_class">
+                <geom condim="4" margin="0.000" friction="1 0.95 0.01" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <joint armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" type="slide"/>
+            </default>
+        </default>
+    </default>
+
     <asset>
         <texture type="skybox" builtin="gradient" rgb1="0.44 0.85 0.56" rgb2="0.46 0.87 0.58" width="32" height="32"/>
+        <material name="block_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 1"/>
+        <material name="block_mat_target" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 0.3"/>
 
         <mesh name="coarse_body" file="coarse_body.stl" />
         <mesh name="coarse_link_1" file="coarse_link_1.stl" />

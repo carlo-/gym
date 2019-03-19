@@ -8,9 +8,9 @@ import gym
 from gym.utils.mjviewer import add_selection_logger
 
 
-ENV = 'YumiReachTwoArms-v0'
-# ENV = 'YumiReachRightArm-v0'
-# ENV = 'YumiReachLeftArm-v0'
+ENV = 'YumiReachTwoArms-v1'
+# ENV = 'YumiReachRightArm-v1'
+# ENV = 'YumiReachLeftArm-v1'
 
 
 def test_sampling_time():

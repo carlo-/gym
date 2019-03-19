@@ -2,9 +2,9 @@ import gym
 from tqdm import tqdm
 
 
-ENV = 'YumiReachTwoArms-v0'
-# ENV = 'YumiReachRightArm-v0'
-# ENV = 'YumiReachLeftArm-v0'
+ENV = 'YumiReachTwoArms-v1'
+# ENV = 'YumiReachRightArm-v1'
+# ENV = 'YumiReachLeftArm-v1'
 
 
 def test_stability(seed=42):

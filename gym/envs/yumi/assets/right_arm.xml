@@ -1,5 +1,5 @@
 <mujoco>
-    <body name="yumi_link_1_r" pos="0.05355 -0.0725 0.41492" quat="0.219255 -0.407796 0.31429 -0.828765">
+    <body childclass="yumi_arm_class" name="yumi_link_1_r" pos="0.05355 -0.0725 0.41492" quat="0.219255 -0.407796 0.31429 -0.828765">
         <inertial pos="0 -0.03 0.12" mass="2" diaginertia="0.1 0.1 0.1" />
         <joint type="hinge" name="yumi_joint_1_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.94088 2.94088" />
         <geom type="mesh" mesh="coarse_link_1"/>
@@ -33,16 +33,18 @@
 
                                     <site name="gripper_r_center" pos="0 0 0.13" rgba="1 0 0 1" size="0.02 0.02 0.02"/>
 
-                                    <body name="gripper_r_finger_r" pos="-0.02 -0.0065 0.0837">
+                                    <body childclass="yumi_gripper_class" name="gripper_r_finger_r" pos="-0.02 -0.0065 0.0837">
                                         <inertial pos="0 0 0" mass="0.2" diaginertia="0.1 0.1 0.1" />
-                                        <joint name="gripper_r_joint" axis="1 0 0" range="0 0.02" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" type="slide"/>
-                                        <geom type="mesh" rgba="0.9 0.1 0.1 1" mesh="finger" condim="4" friction="1 0.05 0.01"/>
+                                        <joint name="gripper_r_joint" axis="1 0 0" range="0 0.02"/>
+                                        <geom type="mesh" rgba="0.9 0.1 0.1 1" mesh="finger" contype="0" conaffinity="0"/>
+                                        <geom pos="-0.005 0.006 0.028" size="0.005 0.0135 0.025" type="box" rgba="0.9 0.1 0.1 0.2"/>
                                     </body>
 
-                                    <body name="gripper_r_finger_l" pos="0.02 0.0065 0.0837" quat="0 0 0 1">
+                                    <body childclass="yumi_gripper_class" name="gripper_r_finger_l" pos="0.02 0.0065 0.0837" quat="0 0 0 1">
                                         <inertial pos="0 0 0" mass="0.2" diaginertia="0.1 0.1 0.1" />
-                                        <joint name="gripper_r_joint_m" axis="1 0 0" range="0 0.02" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" type="slide"/>
-                                        <geom type="mesh" rgba="0.1 0.9 0.1 1" mesh="finger" condim="4" friction="1 0.05 0.01"/>
+                                        <joint name="gripper_r_joint_m" axis="1 0 0" range="0 0.02"/>
+                                        <geom type="mesh" rgba="0.1 0.9 0.1 1" mesh="finger" contype="0" conaffinity="0"/>
+                                        <geom pos="-0.005 0.006 0.028" size="0.005 0.0135 0.025" type="box" rgba="0.1 0.9 0.1 0.2"/>
                                     </body>
                                 </body>
                             </body>

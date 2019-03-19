@@ -1,0 +1,12 @@
+<mujoco>
+    <position joint="yumi_joint_1_r" ctrlrange="-2.94088 2.94088" ctrllimited="true" kp="30000"/>
+    <position joint="yumi_joint_2_r" ctrlrange="-2.50455 0.759218" ctrllimited="true" kp="30000"/>
+    <position joint="yumi_joint_7_r" ctrlrange="-2.94088 2.94088" ctrllimited="true" kp="30000"/>
+    <position joint="yumi_joint_3_r" ctrlrange="-2.15548 1.39626" ctrllimited="true" kp="30000"/>
+    <position joint="yumi_joint_4_r" ctrlrange="-5.06145 5.06145" ctrllimited="true" kp="30000"/>
+    <position joint="yumi_joint_5_r" ctrlrange="-1.53589 2.40855" ctrllimited="true" kp="30000"/>
+    <position joint="yumi_joint_6_r" ctrlrange="-3.9968 3.9968" ctrllimited="true" kp="30000"/>
+
+    <position joint="gripper_r_joint" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
+    <position joint="gripper_r_joint_m" ctrlrange="0 0.2" ctrllimited="true" kp="30000"/>
+</mujoco>

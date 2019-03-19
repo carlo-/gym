@@ -17,7 +17,7 @@ def _check_range(a, a_min, a_max, include_bounds=True):
 
 class YumiEnv(RobotEnv):
 
-    def __init__(self, *, arm, block_gripper, reward_type, distance_threshold, has_object):
+    def __init__(self, *, arm, block_gripper, reward_type, distance_threshold, has_object, ignore_target_rotation=True):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -30,10 +30,12 @@ class YumiEnv(RobotEnv):
         self.block_gripper = block_gripper
         self.has_object = has_object
         self.distance_threshold = distance_threshold
+        self.ignore_target_rotation = ignore_target_rotation
 
         self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
         self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
         self._target_bounds_r = (np.r_[-0.20, -0.43, 0.05], np.r_[0.35, -0.07, 0.6])
+        self._obj_target_bounds = (np.r_[-0.15, -0.15, 0.05], np.r_[0.15, 0.15, 0.25])
 
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
@@ -41,18 +43,35 @@ class YumiEnv(RobotEnv):
         self._arm_l_joint_idx = None
 
         self._gripper_joint_max = 0.02
-        ctrl_high = np.array([40, 35, 30, 20, 15, 10, 10]) * 10
+        n_actions = 7
         if not block_gripper:
-            ctrl_high = np.r_[ctrl_high, self._gripper_joint_max]
+            n_actions += 1
         if arm == 'both':
-            ctrl_high = np.r_[ctrl_high, ctrl_high]
+            n_actions *= 2
 
-        self._ctrl_high = ctrl_high
-        self._ctrl_low = -ctrl_high
+        if self.has_object:
+            object_xml = """
+            <body name="object0" pos="0.025 0.025 0.025">
+                <joint name="object0:joint" type="free" damping="0.01"/>
+                <geom size="0.005 0.150 0.025" type="box" condim="4" name="object0" material="block_mat" mass="2" friction="1 0.95 0.01" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <site name="object0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 1" type="sphere"/>
+                <site name="object0:left" pos="0 0.125 0" size="0.02 0.02 0.02" rgba="0 1 0 1" type="sphere"/>
+                <site name="object0:right" pos="0 -0.125 0" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"/>
+            </body>
+            
+            <body name="target0" pos="1 0.87 0.2">
+                <geom size="0.005 0.150 0.025" type="box" name="target0" material="block_mat_target" contype="0" conaffinity="0"/>
+                <site name="target0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
+                <site name="target0:left" pos="0 0.125 0" size="0.02 0.02 0.02" rgba="0 1 0 0.5" type="sphere"/>
+                <site name="target0:right" pos="0 -0.125 0" size="0.02 0.02 0.02" rgba="1 0 0 0.5" type="sphere"/>
+            </body>
+            """
+        else:
+            object_xml = ""
 
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
         super(YumiEnv, self).__init__(model_path=model_path, n_substeps=2,
-                                      n_actions=ctrl_high.size, initial_qpos=None)
+                                      n_actions=n_actions, initial_qpos=None, xml_format=dict(object=object_xml))
 
     # GoalEnv methods
     # ----------------------------
@@ -61,7 +80,8 @@ class YumiEnv(RobotEnv):
         assert achieved_goal.shape == desired_goal.shape
         if self.reward_type == 'sparse':
             if self.has_object:
-                raise NotImplementedError
+                success = self._is_success(achieved_goal, desired_goal)
+                return success - 1
             else:
                 success_l = float(self.has_left_arm) * self._is_success(achieved_goal[..., :3], desired_goal[..., :3])
                 success_r = float(self.has_right_arm) * self._is_success(achieved_goal[..., 3:], desired_goal[..., 3:])
@@ -78,14 +98,14 @@ class YumiEnv(RobotEnv):
     # ----------------------------
 
     def _reset_sim(self):
-        pos_low = np.r_[-1.0, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
-        pos_high = np.r_[0.4,  0.6,  0.4,  0.4,  0.3,  0.3,  0.3]
 
         qpos = self.init_qpos.copy()
         qvel = self.init_qvel.copy()
 
         if self._arm_l_joint_idx is not None:
-            self.init_qpos[self._arm_l_joint_idx] = self.np_random.uniform(pos_low, pos_high)
+            pos_low_l = np.r_[0.8, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
+            pos_high_l = np.r_[1.4, 0.6, 0.4, 0.4, 0.3, 0.3, 0.3]
+            self.init_qpos[self._arm_l_joint_idx] = self.np_random.uniform(pos_low_l, pos_high_l)
             self.init_qvel[self._arm_l_joint_idx] = 0.0
 
         if self._gripper_l_joint_idx is not None:
@@ -93,13 +113,16 @@ class YumiEnv(RobotEnv):
             self.init_qvel[self._gripper_l_joint_idx] = 0.0
 
         if self._arm_r_joint_idx is not None:
-            self.init_qpos[self._arm_r_joint_idx] = self.np_random.uniform(pos_low, pos_high)
+            pos_low_r = np.r_[-1.4, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
+            pos_high_r = np.r_[-0.8,  0.6,  0.4,  0.4,  0.3,  0.3,  0.3]
+            self.init_qpos[self._arm_r_joint_idx] = self.np_random.uniform(pos_low_r, pos_high_r)
             self.init_qvel[self._arm_r_joint_idx] = 0.0
 
         if self._gripper_r_joint_idx is not None:
             self.init_qpos[self._gripper_r_joint_idx] = 0.0
             self.init_qvel[self._gripper_r_joint_idx] = 0.0
 
+        self.sim.data.ctrl[:] = 0.0
         self._set_sim_state(qpos, qvel)
         return True
 
@@ -109,11 +132,13 @@ class YumiEnv(RobotEnv):
         arm_l_qvel = np.zeros(0)
         gripper_l_qpos = np.zeros(0)
         gripper_l_pos = np.zeros(0)
+        gripper_l_to_obj = np.zeros(0)
 
         arm_r_qpos = np.zeros(0)
         arm_r_qvel = np.zeros(0)
         gripper_r_qpos = np.zeros(0)
         gripper_r_pos = np.zeros(0)
+        gripper_r_to_obj = np.zeros(0)
 
         if self.has_left_arm:
             arm_l_qpos = self.sim.data.qpos[self._arm_l_joint_idx]
@@ -133,9 +158,18 @@ class YumiEnv(RobotEnv):
         if self._gripper_r_joint_idx is not None:
             gripper_r_qpos = self.sim.data.qpos[self._gripper_r_joint_idx]
 
+        object_pose = np.zeros(0)
         if self.has_object:
-            # Achieved goal is object position
-            raise NotImplementedError
+            # Achieved goal is object position and quaternion
+            object_pose = np.zeros(7)
+            object_pose[:3] = self.sim.data.get_body_xpos('object0')
+            if not self.ignore_target_rotation:
+                object_pose[3:] = self.sim.data.get_body_xquat('object0')
+            achieved_goal = object_pose.copy()
+            if self.has_left_arm:
+                gripper_l_to_obj = self.sim.data.get_site_xpos('object0:left') - gripper_l_pos
+            if self.has_right_arm:
+                gripper_r_to_obj = self.sim.data.get_site_xpos('object0:right') - gripper_r_pos
         else:
             # Achieved goal is gripper(s) position(s)
             achieved_goal = np.zeros(6)
@@ -147,7 +181,9 @@ class YumiEnv(RobotEnv):
         obs = np.concatenate([
             arm_l_qpos, arm_l_qvel, gripper_l_qpos,
             arm_r_qpos, arm_r_qvel, gripper_r_qpos,
-            gripper_l_pos, gripper_r_pos
+            gripper_l_pos, gripper_r_pos,
+            gripper_l_to_obj, gripper_r_to_obj,
+            object_pose
         ])
 
         return {
@@ -158,13 +194,13 @@ class YumiEnv(RobotEnv):
 
     def _set_action(self, a):
         a = np.clip(a, self.action_space.low, self.action_space.high)
-        a *= self._ctrl_high
 
         if not self.block_gripper:
             arm1_a = a[:8]
             arm2_a = a[8:]
-            gripper1_a = arm1_a[7:]
-            gripper2_a = arm2_a[7:]
+            # remap [-1, 1] to [0, gripper_joint_max]
+            gripper1_a = self._gripper_joint_max * (arm1_a[7:] + 1.0) / 2.0
+            gripper2_a = self._gripper_joint_max * (arm2_a[7:] + 1.0) / 2.0
             a = np.r_[arm1_a, gripper1_a, arm2_a, gripper2_a]
         else:
             arm1_a = a[:7]
@@ -183,8 +219,10 @@ class YumiEnv(RobotEnv):
 
     def _sample_goal(self):
         if self.has_object:
-            # Goal is object target position
-            raise NotImplementedError
+            # Goal is object target position and quaternion
+            new_goal = np.zeros(7)
+            new_goal[:3] = self.np_random.uniform(*self._obj_target_bounds)
+            # TODO: Randomize rotation
         else:
             # Goal is gripper(s) target position(s)
             new_goal = np.zeros(6)
@@ -217,8 +255,10 @@ class YumiEnv(RobotEnv):
         yumi_arm_joints = [1, 2, 7, 3, 4, 5, 6]
         if self.has_right_arm:
             self._arm_r_joint_idx = [self.sim.model.joint_name2id(f'yumi_joint_{i}_r') for i in yumi_arm_joints]
+            self.arm_r_joint_lims = self.sim.model.jnt_range[self._arm_r_joint_idx].copy()
         if self.has_left_arm:
             self._arm_l_joint_idx = [self.sim.model.joint_name2id(f'yumi_joint_{i}_l') for i in yumi_arm_joints]
+            self.arm_l_joint_lims = self.sim.model.jnt_range[self._arm_l_joint_idx].copy()
 
         if not self.block_gripper:
             if self.has_right_arm:
@@ -234,6 +274,8 @@ class YumiEnv(RobotEnv):
         if self.has_right_arm:
             self._initial_r_gripper_pos = self.sim.data.get_site_xpos('gripper_r_center').copy()
 
+        self._reset_sim()
+
     def _viewer_setup(self):
         self.viewer.cam.distance = 1.7
         self.viewer.cam.elevation = -20
@@ -241,13 +283,18 @@ class YumiEnv(RobotEnv):
 
     def _render_callback(self):
         # Visualize target.
-        sites_offset = (self.sim.data.site_xpos - self.sim.model.site_pos).copy()
-        if self.has_left_arm:
-            site_id = self.sim.model.site_name2id('target_l')
-            self.sim.model.site_pos[site_id] = self.goal[:3] - sites_offset[site_id]
-        if self.has_right_arm:
-            site_id = self.sim.model.site_name2id('target_r')
-            self.sim.model.site_pos[site_id] = self.goal[3:] - sites_offset[site_id]
+        if self.has_object:
+            bodies_offset = (self.sim.data.body_xpos - self.sim.model.body_pos).copy()
+            body_id = self.sim.model.body_name2id('target0')
+            self.sim.model.body_pos[body_id, :] = self.goal[:3] - bodies_offset[body_id]
+        else:
+            sites_offset = (self.sim.data.site_xpos - self.sim.model.site_pos).copy()
+            if self.has_left_arm:
+                site_id = self.sim.model.site_name2id('target_l')
+                self.sim.model.site_pos[site_id] = self.goal[:3] - sites_offset[site_id]
+            if self.has_right_arm:
+                site_id = self.sim.model.site_name2id('target_r')
+                self.sim.model.site_pos[site_id] = self.goal[3:] - sites_offset[site_id]
         self.sim.forward()
 
     # Utilities
