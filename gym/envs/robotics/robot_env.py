@@ -5,6 +5,7 @@ import numpy as np
 import gym
 from gym import error, spaces
 from gym.utils import seeding
+from gym.envs.robotics.utils import load_xml_model_with_format
 
 try:
     import mujoco_py
@@ -13,7 +14,8 @@ except ImportError as e:
 
 
 class RobotEnv(gym.GoalEnv):
-    def __init__(self, model_path, initial_qpos, n_actions, n_substeps):
+    def __init__(self, *, model_path, initial_qpos, n_actions, n_substeps, xml_format=None):
+
         if model_path.startswith('/'):
             fullpath = model_path
         else:
@@ -21,7 +23,11 @@ class RobotEnv(gym.GoalEnv):
         if not os.path.exists(fullpath):
             raise IOError('File {} does not exist'.format(fullpath))
 
-        model = mujoco_py.load_model_from_path(fullpath)
+        if xml_format is not None:
+            model = load_xml_model_with_format(fullpath, xml_format)
+        else:
+            model = mujoco_py.load_model_from_path(fullpath)
+
         self.sim = mujoco_py.MjSim(model, nsubsteps=n_substeps)
         self.viewer = None
         self._mocap_bodies_visible = True

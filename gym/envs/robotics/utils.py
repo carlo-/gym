@@ -1,3 +1,6 @@
+import os
+import uuid
+
 import numpy as np
 
 from gym import error
@@ -5,6 +8,42 @@ try:
     import mujoco_py
 except ImportError as e:
     raise error.DependencyNotInstalled("{}. (HINT: you need to install mujoco_py, and also perform the setup instructions here: https://github.com/openai/mujoco-py/.)".format(e))
+
+
+def load_xml_model_with_format(full_xml_path, xml_format: dict):
+
+    with open(full_xml_path, 'r') as f:
+        model_xml = f.read()
+
+    templates = [
+        '<placeholder name="{}"/>',
+        '<placeholder name="{}" />',
+        '<placeholder name="{}"><placeholder/>',
+        '<placeholder name="{}" ><placeholder/>'
+    ]
+
+    for k, v in xml_format.items():
+        found = False
+        for t in templates:
+            prev = hash(model_xml)
+            model_xml = model_xml.replace(t.format(k), v)
+            found = found or prev != hash(model_xml)
+        if not found:
+            raise RuntimeError(f'No placeholder for key "{k}" found in XML. Check file {full_xml_path}')
+
+    dir_path = os.path.dirname(full_xml_path)
+    tmp_file_name = f'{uuid.uuid4().hex}.xml'
+    tmp_file_path = os.path.join(dir_path, tmp_file_name)
+
+    with open(tmp_file_path, 'wb') as fp:
+        fp.write(model_xml.encode())
+        fp.flush()
+
+    try:
+        model = mujoco_py.load_model_from_path(tmp_file_path)
+    finally:
+        os.remove(tmp_file_path)
+    return model
 
 
 def robot_get_obs(sim):
