@@ -483,6 +483,12 @@ register(
     max_episode_steps=300,
 )
 
+register(
+    id='YumiBar-v1',
+    entry_point='gym.envs.yumi:YumiBarEnv',
+    max_episode_steps=450,
+)
+
 # Atari
 # ----------------------------------------
 

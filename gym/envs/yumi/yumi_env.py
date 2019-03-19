@@ -388,3 +388,11 @@ class YumiReachLeftArmEnv(YumiReachEnv):
 class YumiReachTwoArmsEnv(YumiReachEnv):
     def __init__(self, **kwargs):
         super().__init__(arm='both', **kwargs)
+
+
+class YumiBarEnv(YumiEnv, EzPickle):
+    def __init__(self, **kwargs):
+        default_kwargs = dict(arm='both', block_gripper=False, reward_type='sparse', distance_threshold=0.05)
+        merged = {**default_kwargs, **kwargs}
+        super().__init__(has_object=True, **merged)
+        EzPickle.__init__(self)
