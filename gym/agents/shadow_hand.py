@@ -1,10 +1,12 @@
 import numpy as np
 
+from gym.agents.base import BaseAgent
 
-class HandPickAndPlaceAgent(object):
 
-    def __init__(self, env):
-        super(HandPickAndPlaceAgent).__init__()
+class HandPickAndPlaceAgent(BaseAgent):
+
+    def __init__(self, env, **kwargs):
+        super(HandPickAndPlaceAgent, self).__init__(env, **kwargs)
         from gym.envs.robotics import HandPickAndPlaceEnv
         assert isinstance(env.unwrapped, HandPickAndPlaceEnv)
         self._env = env
@@ -20,7 +22,7 @@ class HandPickAndPlaceAgent(object):
         self._hand_ctrl = np.zeros(18)
         self._grasp_steps = 0
 
-    def predict(self, obs):
+    def predict(self, obs, **kwargs):
 
         if self._goal is None or np.any(self._goal != obs['desired_goal']):
             self._reset(obs)

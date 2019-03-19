@@ -1,16 +1,17 @@
-import gym
 import numpy as np
 
+import gym
+from gym.agents.base import BaseAgent
 
-class FetchPickAndPlaceAgent(object):
 
-    def __init__(self, env):
-        super(FetchPickAndPlaceAgent).__init__()
-        self._env = env
+class FetchPickAndPlaceAgent(BaseAgent):
+
+    def __init__(self, env, **kwargs):
+        super(FetchPickAndPlaceAgent, self).__init__(env, **kwargs)
         self._phase = 0
         self._goal = None
 
-    def predict(self, obs):
+    def predict(self, obs, **kwargs):
 
         # Modified from original implementation in OpenAI's baselines:
         # https://github.com/openai/baselines/blob/master/baselines/her/experiment/data_generation/fetch_data_generation.py
