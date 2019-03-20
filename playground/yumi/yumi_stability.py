@@ -1,6 +1,8 @@
 import gym
 from tqdm import tqdm
 
+from playground.utils import test_env_fps
+
 
 ENV = 'YumiReachTwoArms-v1'
 # ENV = 'YumiReachRightArm-v1'
@@ -29,3 +31,5 @@ def test_stability(seed=42):
 
 if __name__ == '__main__':
     test_stability()
+    test_env_fps(gym.make('YumiBar-v1'))
+    test_env_fps(gym.make('YumiReachTwoArms-v1'))

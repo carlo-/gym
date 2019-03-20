@@ -70,7 +70,7 @@ class YumiEnv(RobotEnv):
             object_xml = ""
 
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
-        super(YumiEnv, self).__init__(model_path=model_path, n_substeps=2,
+        super(YumiEnv, self).__init__(model_path=model_path, n_substeps=5,
                                       n_actions=n_actions, initial_qpos=None, xml_format=dict(object=object_xml))
 
     # GoalEnv methods
@@ -124,6 +124,19 @@ class YumiEnv(RobotEnv):
 
         self.sim.data.ctrl[:] = 0.0
         self._set_sim_state(qpos, qvel)
+
+        if self.has_left_arm:
+            # make sure the left gripper is above the table
+            gripper_z = self.sim.data.get_site_xpos('gripper_l_center')[2]
+            if gripper_z < 0.043:
+                return False
+
+        if self.has_right_arm:
+            # make sure the right gripper is above the table
+            gripper_z = self.sim.data.get_site_xpos('gripper_r_center')[2]
+            if gripper_z < 0.043:
+                return False
+
         return True
 
     def _get_obs(self):

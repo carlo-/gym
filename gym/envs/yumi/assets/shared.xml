@@ -1,6 +1,6 @@
 <mujoco>
     <compiler angle="radian" meshdir="./stls" />
-    <option timestep="0.005" integrator="Euler" />
+    <option timestep="0.002" integrator="Euler" />
     <size njmax="500" nconmax="200" />
 
     <default>
