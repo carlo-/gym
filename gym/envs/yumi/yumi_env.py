@@ -53,7 +53,8 @@ class YumiEnv(RobotEnv):
             object_xml = """
             <body name="object0" pos="0.025 0.025 0.025">
                 <joint name="object0:joint" type="free" damping="0.01"/>
-                <geom size="0.005 0.150 0.025" type="box" condim="4" name="object0" material="block_mat" mass="2" friction="1 0.95 0.01" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <geom size="0.005 0.150 0.025" type="box" condim="4" name="object0" material="block_mat" mass="0.2" friction="1 0.95 0.01" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <geom size="0.025 0.150 0.005" pos="0 0 -0.02" type="box" condim="4" name="object0_base" material="block_mat" mass="1.8" solimp="0.99 0.99 0.01" solref="0.01 1"/>
                 <site name="object0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 1" type="sphere"/>
                 <site name="object0:left" pos="0 0.125 0" size="0.02 0.02 0.02" rgba="0 1 0 1" type="sphere"/>
                 <site name="object0:right" pos="0 -0.125 0" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"/>
@@ -61,6 +62,7 @@ class YumiEnv(RobotEnv):
             
             <body name="target0" pos="1 0.87 0.2">
                 <geom size="0.005 0.150 0.025" type="box" name="target0" material="block_mat_target" contype="0" conaffinity="0"/>
+                <geom size="0.025 0.150 0.005" pos="0 0 -0.02" type="box" name="target0_base" material="block_mat_target" contype="0" conaffinity="0"/>
                 <site name="target0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
                 <site name="target0:left" pos="0 0.125 0" size="0.02 0.02 0.02" rgba="0 1 0 0.5" type="sphere"/>
                 <site name="target0:right" pos="0 -0.125 0" size="0.02 0.02 0.02" rgba="1 0 0 0.5" type="sphere"/>
