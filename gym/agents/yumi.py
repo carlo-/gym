@@ -2,6 +2,7 @@ import numpy as np
 
 from gym.envs.robotics import rotations
 from gym.agents.base import BaseAgent
+from mujoco_py import const as mj_const
 
 
 def _solve_qp_ik_vel(vel, jac, joint_pos, joint_lims=None, duration=None, margin=0.2):
@@ -79,6 +80,104 @@ def _solve_qp_ik_pos(current_pose, target_pose, jac, joint_pos, joint_lims=None,
     return new_q
 
 
+def pose_to_mat(pose: np.ndarray) -> np.ndarray:
+    rot_mat = rotations.quat2mat(pose[..., 3:])
+    mat = np.zeros(pose.shape[:-1] + (4, 4))
+    mat[..., :3, :3] = rot_mat
+    mat[..., :3, 3] = pose[..., :3]
+    mat[..., 3, 3] = 1.0
+    return mat
+
+
+def mat_to_pose(mat: np.ndarray) -> np.ndarray:
+    rot_mat = mat[..., :3, :3]
+    quat = rotations.mat2quat(rot_mat)
+    pos = mat[..., :3, 3]
+    return np.concatenate([pos, quat], axis=-1)
+
+
+def _get_tf(world_to_b: np.ndarray, world_to_a: np.ndarray) -> np.ndarray:
+    """Returns a_to_b pose"""
+    pos_tf = world_to_b[..., :3] - world_to_a[..., :3]
+    q = rotations.quat_mul(rotations.quat_identity(), rotations.quat_conjugate(world_to_a[..., 3:]))
+    pos_tf = rotations.quat_rot_vec(q, pos_tf)
+    quat_tf = rotations.quat_mul(world_to_b[..., 3:], rotations.quat_conjugate(world_to_a[..., 3:]))
+    return np.concatenate([pos_tf, quat_tf], axis=-1)
+
+
+def _apply_tf_old(a_to_b: np.ndarray, world_to_a: np.ndarray) -> np.ndarray:
+    """Returns world_to_b pose"""
+    a_to_b_mat = pose_to_mat(a_to_b)
+    world_to_a_mat = pose_to_mat(world_to_a)
+    world_to_b_mat = world_to_a_mat @ a_to_b_mat
+    return mat_to_pose(world_to_b_mat)
+
+
+def _apply_tf(a_to_b: np.ndarray, world_to_a: np.ndarray) -> np.ndarray:
+    """Returns world_to_b pose"""
+    new_pos = world_to_a[:3] + rotations.quat_rot_vec(world_to_a[3:], a_to_b[:3])
+    new_quat = rotations.quat_mul(a_to_b[3:], world_to_a[3:])
+    return np.concatenate([new_pos, new_quat], axis=-1)
+
+
+def _render_pose(pose: np.ndarray, viewer, label=""):
+    pos = pose[:3]
+    if pose.size == 6:
+        quat = rotations.euler2quat(pose[3:])
+    elif pose.size == 7:
+        quat = pose[3:]
+    else:
+        raise ValueError
+    for i in range(3):
+        rgba = np.zeros(4)
+        rgba[[i, 3]] = 1.
+        tf = [np.r_[0., np.pi/2, 0.], np.r_[np.pi/2, np.pi/1, 0.], np.r_[0., 0., 0.]][i]
+        rot = rotations.quat_mul(quat, rotations.euler2quat(tf))
+        viewer.add_marker(
+            pos=pos, mat=rotations.quat2mat(rot).flatten(), label=(label if i == 0 else ""),
+            type=mj_const.GEOM_ARROW, size=np.r_[0.01, 0.01, 0.2], rgba=rgba, specular=0.
+        )
+
+
+class TFDebugger:
+
+    i = 0
+    ob1_pose = None
+    ob2_pose = None
+    tf = None
+
+    def __init__(self):
+        raise NotImplementedError
+
+    @classmethod
+    def reset(cls):
+        cls.i = 0
+        cls.ob1_pose = np.r_[0.025, 0.025, 0.825, 1, 0, 0, 0]
+        cls.ob2_pose = np.r_[0.025, 0.25, 0.825, 1, 0, 0, 0]
+        cls.tf = None
+
+    @classmethod
+    def step(cls, viewer):
+
+        q1 = rotations.euler2quat(np.r_[0.01, 0.01, 0.05])
+        q0 = cls.ob1_pose[3:].copy()
+        q_common = rotations.quat_mul(q0, q1)
+
+        cls.ob1_pose[3:] = q_common.copy()
+        _render_pose(cls.ob1_pose, viewer)
+
+        cls.ob2_pose[3:] = q_common.copy()
+        _render_pose(cls.ob2_pose, viewer)
+
+        if cls.i < 37:
+            cls.tf = _get_tf(cls.ob1_pose, cls.ob2_pose)  # 2_to_1
+            cls.i += 1
+        else:
+            ob1_pose_back = _apply_tf_old(cls.tf, cls.ob2_pose)
+            ob1_pose_back[2] -= 0.0
+            _render_pose(_apply_tf_old(cls.tf, cls.ob2_pose), viewer)
+
+
 class YumiBarAgent(BaseAgent):
 
     def __init__(self, env, use_qp_solver=False, check_joint_limits=False, **kwargs):
@@ -96,6 +195,7 @@ class YumiBarAgent(BaseAgent):
         self._goal = None
         self._phase = 0
         self._phase_steps = 0
+        self._locked_l_to_r_tf = None
         self._robot = YumiEnv.get_urdf_model()
         self._kdl = PyKDL
         self.use_qp_solver = use_qp_solver
@@ -156,6 +256,7 @@ class YumiBarAgent(BaseAgent):
         self._goal = new_goal.copy()
         self._phase = 0
         self._phase_steps = 0
+        self._locked_l_to_r_tf = None
 
     def _get_jacobian(self, joint_pos, jac_solver):
         seed_array = self._kdl.JntArray(len(joint_pos))
@@ -213,6 +314,13 @@ class YumiBarAgent(BaseAgent):
         new_goal = obs['desired_goal']
         if self._goal is None or np.any(self._goal != new_goal):
             self._reset(new_goal)
+            # TFDebugger.reset()
+        # TFDebugger.step(self._raw_env.viewer)
+
+        curr_grp_poses = {a: np.r_[
+            self._raw_env.sim.data.get_site_xpos(f'gripper_{a}_center'),
+            rotations.mat2quat(self._raw_env.sim.data.get_site_xmat(f'gripper_{a}_center')),
+        ] for a in ('l', 'r')}
 
         pos_errors = []
         for arm in ('l', 'r'):
@@ -229,7 +337,7 @@ class YumiBarAgent(BaseAgent):
                 target_pose = np.r_[target_pose[:3], rotations.euler2quat(target_pose[3:])]
 
                 if self._phase == 3:
-                    target_pose[:3] = obj_l_rel_pos + new_goal[:3]
+                    target_pose[:3] = self._raw_env.sim.data.get_site_xpos('target0:left').copy()
 
                 prev_err = self._prev_err_l
                 curr_q = obs['observation'][:7]
@@ -247,18 +355,13 @@ class YumiBarAgent(BaseAgent):
                 target_pose = np.r_[target_pose[:3], rotations.euler2quat(target_pose[3:])]
 
                 if self._phase == 3:
-                    target_pose[:3] = obj_r_rel_pos + new_goal[:3]
+                    target_pose[:3] = self._raw_env.sim.data.get_site_xpos('target0:right').copy()
 
                 prev_err = self._prev_err_r
                 curr_q = obs['observation'][16:23]
                 u_masked = u[8:15]
             else:
                 continue
-
-            curr_pose = np.r_[
-                self._raw_env.sim.data.get_site_xpos(f'gripper_{arm}_center'),
-                rotations.mat2quat(self._raw_env.sim.data.get_site_xmat(f'gripper_{arm}_center')),
-            ]
 
             if self._phase == 0:
                 u[7] = -1.0
@@ -275,6 +378,8 @@ class YumiBarAgent(BaseAgent):
                 u[7] = 1.0
                 u[15] = 1.0
 
+            _render_pose(target_pose.copy(), self._raw_env.viewer)
+            curr_pose = curr_grp_poses[arm].copy()
             err_pose = curr_pose - target_pose
             err_pos = np.linalg.norm(err_pose[:3])
             pos_errors.append(err_pos)
@@ -303,6 +408,7 @@ class YumiBarAgent(BaseAgent):
             if self._phase_steps > 30:
                 self._phase = 3
                 self._phase_steps = 0
+                self._locked_l_to_r_tf = _get_tf(curr_grp_poses['r'], curr_grp_poses['l'])
 
         u = np.clip(u, self._env.action_space.low, self._env.action_space.high)
         return u
