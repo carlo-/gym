@@ -11,6 +11,8 @@
     <material name="robot0:object" texture="robot0:texgeom" texuniform="false"></material>
     <material name="floor_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 0"></material>
 
+    <mesh name="object_mesh:teapot" scale="0.011 0.011 0.011" file="teapot_vhacd.stl"/>
+    <mesh name="object_mesh:torus" scale="0.005 0.005 0.005" file="torus.stl"/>
     <mesh name="robot0:forearm" file="forearm_electric.stl"></mesh>
     <mesh name="robot0:forearm_cvx" file="forearm_electric_cvx.stl"></mesh>
     <mesh name="robot0:wrist" scale="0.001 0.001 0.001" file="wrist.stl"></mesh>

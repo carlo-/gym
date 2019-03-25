@@ -16,6 +16,14 @@ except ImportError as e:
 HAND_PICK_AND_PLACE_XML = os.path.join('hand', 'pick_and_place.xml')
 HAND_MOVE_AND_REACH_XML = os.path.join('hand', 'move_and_reach.xml')
 
+OBJECTS = dict(
+    original=dict(type='ellipsoid', size='0.03 0.03 0.04'),
+    small_box=dict(type='box', size='0.022 0.022 0.022'),
+    sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
+    exp1=dict(type='mesh', mesh='object_mesh:teapot'),
+    exp2=dict(type='mesh', mesh='object_mesh:torus'),
+)
+
 
 def _goal_distance(goal_a, goal_b, ignore_target_rotation):
     assert goal_a.shape == goal_b.shape
@@ -46,7 +54,8 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
     def __init__(self, model_path, reward_type, initial_qpos=None, relative_control=False, has_object=False,
                  randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
-                 success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0, target_in_the_air_p=0.5):
+                 success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0, target_in_the_air_p=0.5,
+                 object_id='original'):
 
         self.target_in_the_air_p = target_in_the_air_p
         self.has_object = has_object
@@ -84,12 +93,21 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                 raise ValueError('Parameter success_on_grasp_only requires object to be grasped!')
 
         default_qpos = dict()
+        xml_format = None
         if self.has_object:
             default_qpos['object:joint'] = [1.25, 0.53, 0.4, 1., 0., 0., 0.]
-        initial_qpos = initial_qpos or default_qpos
+            xml_format = dict(
+                object_geom='<geom name="object" {props} material="material:object" condim="4" mass="0.2"'
+                            'friction="1 0.95 0.01" solimp="0.99 0.99 0.01" solref="0.01 1"/>',
+                target_geom='<geom name="target" {props} material="material:target" condim="4" group="2"'
+                            'contype="0" conaffinity="0"/>',
+            )
+            props = " ".join([f'{k}="{v}"' for k, v in OBJECTS[object_id].items()])
+            xml_format = {k: v.format(props=props) for k, v in xml_format.items()}
 
+        initial_qpos = initial_qpos or default_qpos
         hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos,
-                                  relative_control=relative_control, arm_control=True)
+                                  relative_control=relative_control, arm_control=True, xml_format=xml_format)
         utils.EzPickle.__init__(self)
 
     def get_object_contact_points(self):
@@ -325,10 +343,6 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         assert goal.shape == (7,)
         self.sim.data.set_joint_qpos('target:joint', goal)
         self.sim.data.set_joint_qvel('target:joint', np.zeros(6))
-
-        if 'object_hidden' in self.sim.model.geom_names:
-            hidden_id = self.sim.model.geom_name2id('object_hidden')
-            self.sim.model.geom_rgba[hidden_id, 3] = 1.
         self.sim.forward()
 
     def _get_obs(self):
