@@ -20,6 +20,7 @@ OBJECTS = dict(
     original=dict(type='ellipsoid', size='0.03 0.03 0.04'),
     small_box=dict(type='box', size='0.022 0.022 0.022'),
     sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
+    small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
     exp1=dict(type='mesh', mesh='object_mesh:teapot'),
     exp2=dict(type='mesh', mesh='object_mesh:torus'),
 )
@@ -67,12 +68,14 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.rotation_threshold = rotation_threshold
         self.reward_type = reward_type
         self.success_on_grasp_only = success_on_grasp_only
+        self.object_id = object_id
         self.forearm_bounds = (np.r_[0.5, 0.3, 0.42], np.r_[1.75, 1.2, 1.1])
         self.table_safe_bounds = (np.r_[1.10, 0.43], np.r_[1.49, 1.05])
         self._initial_arm_mocap_pose = np.r_[1.05, 0.75, 0.65, rotations.euler2quat(np.r_[0., 1.59, 1.57])]
 
         if isinstance(grasp_state, bool) and grasp_state:
-            p = os.path.join(os.path.dirname(__file__), '../assets/states/grasp_state.pkl')
+            suffix = "" if object_id == 'original' else f'_{object_id}'
+            p = os.path.join(os.path.dirname(__file__), f'../assets/states/grasp_state{suffix}.pkl')
             if not os.path.exists(p):
                 raise IOError('File {} does not exist'.format(p))
             grasp_state = pickle.load(open(p, 'rb'))

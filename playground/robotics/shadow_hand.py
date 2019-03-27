@@ -95,14 +95,15 @@ def test_arm_bounds():
     print('test_arm_bounds PASSED')
 
 
-def generate_grasp_state(max_states=20, file_path=None, render=False):
+def generate_grasp_state(max_states=20, file_path=None, render=False, object_id='original'):
 
     env = gym.make(
         'HandPickAndPlace-v0',
         ignore_rotation_ctrl=True,
         ignore_target_rotation=True,
         randomize_initial_arm_pos=True,
-        randomize_initial_object_pos=False
+        randomize_initial_object_pos=False,
+        object_id=object_id,
     )
 
     agent = HandPickAndPlaceAgent(env)
@@ -161,11 +162,10 @@ def generate_grasp_state(max_states=20, file_path=None, render=False):
             stable_states.append(state)
 
     if len(stable_states) > 0:
-        print('Select stable state: ')
-        sel = int(input())
-        state = stable_states[sel]
+        state = stable_states[0]
         if file_path is not None:
             pickle.dump(state, open(file_path, 'wb'))
+            print(f'Wrote stable state at index 0 to file.')
         return state
 
     print('No stable grasps found!')
@@ -181,7 +181,8 @@ def render_reset_states():
         randomize_initial_arm_pos=True,
         randomize_initial_object_pos=True,
         grasp_state=True,
-        grasp_state_reset_p=0.5
+        grasp_state_reset_p=1,
+        object_id='small_sphere'
     )
     on_palm_count = 0
     for i in it.count():
