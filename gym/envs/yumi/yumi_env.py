@@ -5,7 +5,7 @@ import mujoco_py
 import numpy as np
 from gym.utils import EzPickle
 from gym.envs.robotics.robot_env import RobotEnv
-from gym.envs.robotics.utils import ctrl_set_action
+from gym.envs.robotics.utils import reset_mocap2body_xpos, reset_mocap_welds
 
 
 def _check_range(a, a_min, a_max, include_bounds=True):
@@ -13,6 +13,27 @@ def _check_range(a, a_min, a_max, include_bounds=True):
         return np.all((a_min <= a) & (a <= a_max))
     else:
         return np.all((a_min < a) & (a < a_max))
+
+
+def _ctrl_set_action(sim, action):
+    # Originally from gym.envs.robotics.utils
+    if sim.data.ctrl is not None:
+        for i in range(action.shape[0]):
+            if sim.model.actuator_biastype[i] == 0:
+                sim.data.ctrl[i] = action[i]
+            else:
+                idx = sim.model.jnt_qposadr[sim.model.actuator_trnid[i, 0]]
+                sim.data.ctrl[i] = sim.data.qpos[idx] + action[i]
+
+
+def _mocap_set_action(sim, action):
+    # Originally from gym.envs.robotics.utils
+    if sim.model.nmocap > 0:
+        pos_delta = action[:, :3]
+        quat_delta = action[:, 3:]
+        reset_mocap2body_xpos(sim)
+        sim.data.mocap_pos[:] = sim.data.mocap_pos + pos_delta
+        sim.data.mocap_quat[:] = sim.data.mocap_quat + quat_delta
 
 
 class YumiEnv(RobotEnv):
@@ -74,6 +95,13 @@ class YumiEnv(RobotEnv):
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
         super(YumiEnv, self).__init__(model_path=model_path, n_substeps=5,
                                       n_actions=n_actions, initial_qpos=None, xml_format=dict(object=object_xml))
+
+    def mocap_control(self, action):
+        reset_mocap2body_xpos(self.sim)
+        self.sim.model.eq_active[:] = 1
+        _mocap_set_action(self.sim, action)
+        self.sim.step()
+        self.sim.model.eq_active[:] = 0
 
     # GoalEnv methods
     # ----------------------------
@@ -225,7 +253,7 @@ class YumiEnv(RobotEnv):
             if self.has_two_arms:
                 a = np.r_[a, arm2_a, g, g]
 
-        ctrl_set_action(self.sim, a)
+        _ctrl_set_action(self.sim, a)
         return a
 
     def _is_success(self, achieved_goal, desired_goal):
@@ -263,6 +291,8 @@ class YumiEnv(RobotEnv):
     def _env_setup(self, initial_qpos):
         if initial_qpos is not None:
             raise NotImplementedError
+        reset_mocap_welds(self.sim)
+        self.sim.forward()
 
         self.init_qpos = self.sim.data.qpos.ravel().copy()
         self.init_qvel = self.sim.data.qvel.ravel().copy()

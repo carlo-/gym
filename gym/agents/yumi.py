@@ -1,5 +1,8 @@
+import copy
+
 import numpy as np
 
+from gym.envs.yumi.yumi_env import YumiEnv
 from gym.envs.robotics import rotations
 from gym.agents.base import BaseAgent
 from mujoco_py import const as mj_const
@@ -78,6 +81,28 @@ def _solve_qp_ik_pos(current_pose, target_pose, jac, joint_pos, joint_lims=None,
         qvel *= 0.1
     new_q = joint_pos + qvel
     return new_q
+
+
+def _simulate_mocap_ctrl(raw_env: YumiEnv, pose_delta, arm):
+    prev_s = copy.deepcopy(raw_env.sim.get_state())
+    mocap_a = np.zeros((raw_env.sim.model.nmocap, 7))
+    if arm == 'l' or (arm == 'r' and not raw_env.has_two_arms):
+        mocap_a[0] = pose_delta
+    elif arm == 'r':
+        mocap_a[1] = pose_delta
+    else:
+        raise NotImplementedError
+    raw_env.mocap_control(mocap_a)
+    target_qpos = raw_env.sim.data.qpos.copy()
+    raw_env.sim.set_state(prev_s)
+    arm_target_qpos = target_qpos[getattr(raw_env, f'_arm_{arm}_joint_idx')]
+    return arm_target_qpos
+
+
+def quat_angle_diff(quat_a, quat_b):
+    quat_diff = rotations.quat_mul(quat_a, rotations.quat_conjugate(quat_b))
+    angle_diff = 2 * np.arccos(np.clip(quat_diff[..., 0], -1., 1.))
+    return np.abs(rotations.normalize_angles(angle_diff))
 
 
 def pose_to_mat(pose: np.ndarray) -> np.ndarray:
@@ -180,7 +205,7 @@ class TFDebugger:
 
 class YumiBarAgent(BaseAgent):
 
-    def __init__(self, env, use_qp_solver=False, check_joint_limits=False, **kwargs):
+    def __init__(self, env, use_qp_solver=False, check_joint_limits=False, use_mocap_ctrl=True, **kwargs):
         super(YumiBarAgent, self).__init__(env, **kwargs)
         import PyKDL
         from gym.utils.kdl_parser import kdl_tree_from_urdf_model
@@ -198,6 +223,7 @@ class YumiBarAgent(BaseAgent):
         self._locked_l_to_r_tf = None
         self._robot = YumiEnv.get_urdf_model()
         self._kdl = PyKDL
+        self.use_mocap_ctrl = use_mocap_ctrl
         self.use_qp_solver = use_qp_solver
         self.check_joint_limits = check_joint_limits
 
@@ -333,11 +359,13 @@ class YumiBarAgent(BaseAgent):
                 obj_l_rel_pos = obs['observation'][38:41]
                 obj_pos = obj_l_rel_pos + achieved_pos
 
-                target_pose = np.r_[obj_pos, np.pi, 0.01, 0.01]
+                target_pose = np.r_[obj_pos, np.pi - 0.9, 0.01, 0.01]
                 target_pose = np.r_[target_pose[:3], rotations.euler2quat(target_pose[3:])]
 
                 if self._phase == 3:
                     target_pose[:3] = self._raw_env.sim.data.get_site_xpos('target0:left').copy()
+                    q = rotations.mat2quat(self._raw_env.sim.data.get_site_xmat('target0:left'))
+                    target_pose[3:] = rotations.quat_mul(target_pose[3:], q)
 
                 prev_err = self._prev_err_l
                 curr_q = obs['observation'][:7]
@@ -351,11 +379,13 @@ class YumiBarAgent(BaseAgent):
                 obj_r_rel_pos = obs['observation'][41:44]
                 obj_pos = obj_r_rel_pos + achieved_pos
 
-                target_pose = np.r_[obj_pos, -np.pi, 0.01, 0.01]
+                target_pose = np.r_[obj_pos, -np.pi + 0.9, 0.01, np.pi]
                 target_pose = np.r_[target_pose[:3], rotations.euler2quat(target_pose[3:])]
 
                 if self._phase == 3:
                     target_pose[:3] = self._raw_env.sim.data.get_site_xpos('target0:right').copy()
+                    q = rotations.mat2quat(self._raw_env.sim.data.get_site_xmat('target0:right'))
+                    target_pose[3:] = rotations.quat_mul(q, target_pose[3:])
 
                 prev_err = self._prev_err_r
                 curr_q = obs['observation'][16:23]
@@ -384,24 +414,31 @@ class YumiBarAgent(BaseAgent):
             err_pos = np.linalg.norm(err_pose[:3])
             pos_errors.append(err_pos)
 
-            target_pose[:3] -= self._base_offset
-            if self.use_qp_solver:
-                if not self.check_joint_limits:
-                    joint_lims = None
-                curr_pose[:3] -= self._base_offset
-                target_q = self._position_ik_qp(curr_pose, target_pose, curr_q, jac_solver, joint_lims)
+            if self.use_mocap_ctrl:
+                controller_k = 2.0
+                err_rot = quat_angle_diff(curr_pose[3:], target_pose[3:])
+                target_q = _simulate_mocap_ctrl(self._raw_env, -err_pose, arm)
             else:
-                target_q = self._position_ik(target_pose, curr_q, solver)
+                controller_k = 0.1
+                err_rot = 0.0
+                target_pose[:3] -= self._base_offset
+                if self.use_qp_solver:
+                    if not self.check_joint_limits:
+                        joint_lims = None
+                    curr_pose[:3] -= self._base_offset
+                    target_q = self._position_ik_qp(curr_pose, target_pose, curr_q, jac_solver, joint_lims)
+                else:
+                    target_q = self._position_ik(target_pose, curr_q, solver)
 
             if target_q is not None:
                 err_q = curr_q - target_q
-                u_masked[:] = self._controller(err_q, prev_err)
+                u_masked[:] = self._controller(err_q, prev_err, controller_k)
 
         self._phase_steps += 1
-        if self._phase == 0 and np.all(np.array(pos_errors) < 0.02):
+        if self._phase == 0 and np.all(np.array(pos_errors) < 0.02) and err_rot < 0.05:
             self._phase = 1
             self._phase_steps = 0
-        elif self._phase == 1 and np.all(np.array(pos_errors) < 0.007):
+        elif self._phase == 1 and np.all(np.array(pos_errors) < 0.007) and err_rot < 0.05:
             self._phase = 2
             self._phase_steps = 0
         elif self._phase == 2:
@@ -416,11 +453,10 @@ class YumiBarAgent(BaseAgent):
 
 class YumiReachAgent(BaseAgent):
 
-    def __init__(self, env, **kwargs):
+    def __init__(self, env, use_mocap_ctrl=True, **kwargs):
         super(YumiReachAgent, self).__init__(env, **kwargs)
         import PyKDL
         from gym.utils.kdl_parser import kdl_tree_from_urdf_model
-        from gym.envs.yumi.yumi_env import YumiEnv
         assert isinstance(env.unwrapped, YumiEnv)
         assert env.unwrapped.block_gripper
 
@@ -431,6 +467,7 @@ class YumiReachAgent(BaseAgent):
         self._goal = None
         self._robot = YumiEnv.get_urdf_model()
         self._kdl = PyKDL
+        self.use_mocap_ctrl = use_mocap_ctrl
 
         # make sure the simulator is ready before getting the transforms
         self._sim.forward()
@@ -463,10 +500,10 @@ class YumiReachAgent(BaseAgent):
         segment = self._kdl.Segment(joint, frame)
         ee_arm_chain.addSegment(segment)
 
-    def _controller(self, err, prev_err):
+    def _controller(self, err, prev_err, k=1.0):
         d_err = (err - prev_err) / self._dt
         prev_err[:] = err
-        return -(1.0 * err + 0.05 * d_err) * 1.0
+        return -(1.0 * err + 0.05 * d_err) * k
 
     def _reset(self, new_goal):
         self._target_qs = dict()
@@ -533,20 +570,26 @@ class YumiReachAgent(BaseAgent):
             else:
                 continue
 
-            err_pos = np.linalg.norm(achieved_pos - target_pos)
-            target_q = self._target_qs.get(arm)
-            if target_q is None:
-                target_pose = np.zeros(6)
-                target_pose[:3] = target_pos - self._base_offset
-                target_q = self._position_ik(target_pose, curr_q, solver)
-                self._target_qs[arm] = target_q
+            if self.use_mocap_ctrl:
+                controller_k = 2.0
+                pose_delta = np.r_[target_pos - achieved_pos, 0., 0., 0., 0.]
+                target_q = _simulate_mocap_ctrl(self._raw_env, pose_delta, arm)
+            else:
+                controller_k = 1.0
+                err_pos = np.linalg.norm(achieved_pos - target_pos)
+                target_q = self._target_qs.get(arm)
+                if target_q is None:
+                    target_pose = np.zeros(6)
+                    target_pose[:3] = target_pos - self._base_offset
+                    target_q = self._position_ik(target_pose, curr_q, solver)
+                    self._target_qs[arm] = target_q
 
-            if err_pos > 0.04:
-                self._target_qs[arm] = None
+                if err_pos > 0.04:
+                    self._target_qs[arm] = None
 
             if target_q is not None:
                 err_q = curr_q - target_q
-                u_masked[:] = self._controller(err_q, prev_err)
+                u_masked[:] = self._controller(err_q, prev_err, controller_k)
 
         u = np.clip(u, self._env.action_space.low, self._env.action_space.high)
         return u
