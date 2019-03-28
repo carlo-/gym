@@ -408,7 +408,9 @@ class YumiBarAgent(BaseAgent):
                 u[7] = 1.0
                 u[15] = 1.0
 
-            _render_pose(target_pose.copy(), self._raw_env.viewer)
+            if self._raw_env.viewer is not None:
+                _render_pose(target_pose.copy(), self._raw_env.viewer)
+
             curr_pose = curr_grp_poses[arm].copy()
             err_pose = curr_pose - target_pose
             err_pos = np.linalg.norm(err_pose[:3])
