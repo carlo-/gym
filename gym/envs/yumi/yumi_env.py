@@ -337,7 +337,7 @@ class YumiEnv(RobotEnv):
         self.viewer.cam.elevation = -20
         self.viewer.cam.azimuth = 180
 
-    def _render_callback(self):
+    def _step_callback(self):
         # Visualize target.
         if self.has_object:
             bodies_offset = (self.sim.data.body_xpos - self.sim.model.body_pos).copy()
