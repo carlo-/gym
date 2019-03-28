@@ -356,7 +356,7 @@ class YumiBarAgent(BaseAgent):
                 joint_lims = self._raw_env.arm_l_joint_lims
 
                 achieved_pos = obs['observation'][32:35]
-                obj_l_rel_pos = obs['observation'][38:41]
+                obj_l_rel_pos = obs['observation'][44:47]
                 obj_pos = obj_l_rel_pos + achieved_pos
 
                 target_pose = np.r_[obj_pos, np.pi - 0.9, 0.01, 0.01]
@@ -376,7 +376,7 @@ class YumiBarAgent(BaseAgent):
                 joint_lims = self._raw_env.arm_r_joint_lims
 
                 achieved_pos = obs['observation'][35:38]
-                obj_r_rel_pos = obs['observation'][41:44]
+                obj_r_rel_pos = obs['observation'][47:50]
                 obj_pos = obj_r_rel_pos + achieved_pos
 
                 target_pose = np.r_[obj_pos, -np.pi + 0.9, 0.01, np.pi]

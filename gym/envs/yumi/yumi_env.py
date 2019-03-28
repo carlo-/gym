@@ -175,19 +175,24 @@ class YumiEnv(RobotEnv):
         arm_l_qvel = np.zeros(0)
         gripper_l_qpos = np.zeros(0)
         gripper_l_pos = np.zeros(0)
+        gripper_l_vel = np.zeros(0)
         gripper_l_to_obj = np.zeros(0)
 
         arm_r_qpos = np.zeros(0)
         arm_r_qvel = np.zeros(0)
         gripper_r_qpos = np.zeros(0)
         gripper_r_pos = np.zeros(0)
+        gripper_r_vel = np.zeros(0)
         gripper_r_to_obj = np.zeros(0)
+
+        dt = self.sim.nsubsteps * self.sim.model.opt.timestep
 
         if self.has_left_arm:
             arm_l_qpos = self.sim.data.qpos[self._arm_l_joint_idx]
             arm_l_qvel = self.sim.data.qvel[self._arm_l_joint_idx]
             arm_l_qvel = np.clip(arm_l_qvel, -10, 10)
             gripper_l_pos = self.sim.data.get_site_xpos('gripper_l_center').copy()
+            gripper_l_vel = self.sim.data.get_site_xvelp('gripper_l_center') * dt
 
         if self._gripper_l_joint_idx is not None:
             gripper_l_qpos = self.sim.data.qpos[self._gripper_l_joint_idx]
@@ -197,11 +202,14 @@ class YumiEnv(RobotEnv):
             arm_r_qvel = self.sim.data.qvel[self._arm_r_joint_idx]
             arm_r_qvel = np.clip(arm_r_qvel, -10, 10)
             gripper_r_pos = self.sim.data.get_site_xpos('gripper_r_center').copy()
+            gripper_r_vel = self.sim.data.get_site_xvelp('gripper_r_center') * dt
 
         if self._gripper_r_joint_idx is not None:
             gripper_r_qpos = self.sim.data.qpos[self._gripper_r_joint_idx]
 
         object_pose = np.zeros(0)
+        object_velp = np.zeros(0)
+        object_velr = np.zeros(0)
         if self.has_object:
             # Achieved goal is object position and quaternion
             object_pose = np.zeros(7)
@@ -213,6 +221,8 @@ class YumiEnv(RobotEnv):
                 gripper_l_to_obj = self.sim.data.get_site_xpos('object0:left') - gripper_l_pos
             if self.has_right_arm:
                 gripper_r_to_obj = self.sim.data.get_site_xpos('object0:right') - gripper_r_pos
+            object_velp = self.sim.data.get_site_xvelp('object0:center') * dt
+            object_velr = self.sim.data.get_site_xvelr('object0:center') * dt
         else:
             # Achieved goal is gripper(s) position(s)
             achieved_goal = np.zeros(6)
@@ -225,8 +235,9 @@ class YumiEnv(RobotEnv):
             arm_l_qpos, arm_l_qvel, gripper_l_qpos,
             arm_r_qpos, arm_r_qvel, gripper_r_qpos,
             gripper_l_pos, gripper_r_pos,
+            gripper_l_vel, gripper_r_vel,
             gripper_l_to_obj, gripper_r_to_obj,
-            object_pose
+            object_pose, object_velp, object_velr,
         ])
 
         return {
