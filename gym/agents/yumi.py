@@ -402,8 +402,8 @@ class YumiBarAgent(BaseAgent):
                 u[15] = -1.0
                 target_pose[2] -= 0.002
             elif self._phase == 2:
-                u[7] = -1 + self._phase_steps / 15.
-                u[15] = -1 + self._phase_steps / 15.
+                u[7] = -1 + self._phase_steps / 3.
+                u[15] = -1 + self._phase_steps / 3.
             elif self._phase == 3:
                 u[7] = 1.0
                 u[15] = 1.0
@@ -417,7 +417,10 @@ class YumiBarAgent(BaseAgent):
             pos_errors.append(err_pos)
 
             if self.use_mocap_ctrl:
-                controller_k = 2.0
+                if self._phase < 1:
+                    controller_k = 3.0
+                else:
+                    controller_k = 2.5
                 err_rot = quat_angle_diff(curr_pose[3:], target_pose[3:])
                 target_q = _simulate_mocap_ctrl(self._raw_env, -err_pose, arm)
             else:
@@ -437,14 +440,14 @@ class YumiBarAgent(BaseAgent):
                 u_masked[:] = self._controller(err_q, prev_err, controller_k)
 
         self._phase_steps += 1
-        if self._phase == 0 and np.all(np.array(pos_errors) < 0.02) and err_rot < 0.05:
+        if self._phase == 0 and np.all(np.array(pos_errors) < 0.03) and err_rot < 0.05:
             self._phase = 1
             self._phase_steps = 0
         elif self._phase == 1 and np.all(np.array(pos_errors) < 0.007) and err_rot < 0.05:
             self._phase = 2
             self._phase_steps = 0
         elif self._phase == 2:
-            if self._phase_steps > 30:
+            if self._phase_steps > 6:
                 self._phase = 3
                 self._phase_steps = 0
                 self._locked_l_to_r_tf = _get_tf(curr_grp_poses['r'], curr_grp_poses['l'])
