@@ -1,0 +1,8 @@
+<mujoco>
+	<mesh name="object_mesh:teapot_vhacd_m_part0" scale="0.005 0.005 0.005" file="objects/teapot/teapot_vhacd_m_part0.stl"/>
+	<mesh name="object_mesh:teapot_vhacd_m_part1" scale="0.005 0.005 0.005" file="objects/teapot/teapot_vhacd_m_part1.stl"/>
+	<mesh name="object_mesh:teapot_vhacd_m_part2" scale="0.005 0.005 0.005" file="objects/teapot/teapot_vhacd_m_part2.stl"/>
+	<mesh name="object_mesh:teapot_vhacd_m_part3" scale="0.005 0.005 0.005" file="objects/teapot/teapot_vhacd_m_part3.stl"/>
+	<mesh name="object_mesh:teapot_vhacd_m_part4" scale="0.005 0.005 0.005" file="objects/teapot/teapot_vhacd_m_part4.stl"/>
+	<mesh name="object_mesh:teapot_vhacd_m_part5" scale="0.005 0.005 0.005" file="objects/teapot/teapot_vhacd_m_part5.stl"/>
+</mujoco>

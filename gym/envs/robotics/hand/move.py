@@ -1,5 +1,7 @@
 import os
 import pickle
+from typing import Sequence
+
 import numpy as np
 
 from gym import utils, error
@@ -21,8 +23,7 @@ OBJECTS = dict(
     small_box=dict(type='box', size='0.022 0.022 0.022'),
     sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
     small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
-    exp1=dict(type='mesh', mesh='object_mesh:teapot'),
-    exp2=dict(type='mesh', mesh='object_mesh:torus'),
+    teapot=dict(type='mesh', mesh='object_mesh:teapot_vhacd_m', mesh_parts=6, mass=[0.01, 0.01, 0.01, 0.5, 0.01, 0.01]),
 )
 
 
@@ -100,13 +101,38 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         if self.has_object:
             default_qpos['object:joint'] = [1.25, 0.53, 0.4, 1., 0., 0., 0.]
             xml_format = dict(
-                object_geom='<geom name="object" {props} material="material:object" condim="4" mass="0.2"'
+                object_geom='<geom name="{name}" {props} material="material:object" condim="4"'
                             'friction="1 0.95 0.01" solimp="0.99 0.99 0.01" solref="0.01 1"/>',
-                target_geom='<geom name="target" {props} material="material:target" condim="4" group="2"'
+                target_geom='<geom name="{name}" {props} material="material:target" condim="4" group="2"'
                             'contype="0" conaffinity="0"/>',
             )
-            props = " ".join([f'{k}="{v}"' for k, v in OBJECTS[object_id].items()])
-            xml_format = {k: v.format(props=props) for k, v in xml_format.items()}
+            obj = dict(OBJECTS[object_id])
+            if 'mass' not in obj.keys():
+                obj['mass'] = 0.2
+            mesh_parts = obj.get('mesh_parts')
+            if mesh_parts is not None and isinstance(mesh_parts, int):
+                del obj['mesh_parts']
+                object_geom, target_geom = '', ''
+                if isinstance(obj['mass'], Sequence):
+                    masses = list(obj['mass'])
+                    assert len(masses) == mesh_parts
+                    del obj['mass']
+                else:
+                    masses = [obj['mass']] * mesh_parts
+                for i in range(mesh_parts):
+                    obj_part = dict(obj)
+                    obj_part['mesh'] += f'_part{i}'
+                    obj_part['mass'] = masses[i]
+                    props = " ".join([f'{k}="{v}"' for k, v in obj_part.items()])
+                    object_geom += xml_format['object_geom'].format(name=f'object_part{i}', props=props)
+                    target_geom += xml_format['target_geom'].format(name=f'target_part{i}', props=props)
+                xml_format = dict(object_geom=object_geom, target_geom=target_geom)
+            else:
+                props = " ".join([f'{k}="{v}"' for k, v in obj.items()])
+                xml_format = dict(
+                    object_geom=xml_format['object_geom'].format(name='object', props=props),
+                    target_geom=xml_format['target_geom'].format(name='target', props=props),
+                )
 
         initial_qpos = initial_qpos or default_qpos
         hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos,
