@@ -1,6 +1,7 @@
 import numpy as np
 
 from gym.agents.base import BaseAgent
+import gym.utils.transformations as tf
 
 
 class HandPickAndPlaceAgent(BaseAgent):
@@ -15,10 +16,13 @@ class HandPickAndPlaceAgent(BaseAgent):
         self._hand_ctrl = np.zeros(18)
         self._grasp_steps = 0
         self._strategy = 0
+        self._phase = 0
         if env.unwrapped.object_id == 'sphere':
             self._strategy = 1
         if env.unwrapped.object_id == 'small_box':
             self._strategy = 2
+        if env.unwrapped.object_id == 'teapot':
+            self._strategy = 3
 
     def _reset(self, obs=None):
         if obs is not None:
@@ -28,11 +32,16 @@ class HandPickAndPlaceAgent(BaseAgent):
         self._hand_ctrl = np.zeros(18)
         self._prev_d = np.zeros(3)
         self._grasp_steps = 0
+        self._phase = 0
 
     def predict(self, obs, **kwargs):
 
         if self._goal is None or np.any(self._goal != obs['desired_goal']):
             self._reset(obs)
+
+        wrist_noise = 0.
+        arm_pos_noise = 0.
+        fingers_noise = 0.
 
         strategy = self._strategy
         action = np.zeros(self._env.action_space.shape)
@@ -112,10 +121,61 @@ class HandPickAndPlaceAgent(BaseAgent):
                     arm_pos_ctrl = d * 0.5
             else:
                 self._grasp_steps = 0
+
+        elif strategy == 3:
+            wrist_ctrl = -0.5
+            d = np.zeros(3)
+            self._hand_ctrl[:] = -1.0
+            self._hand_ctrl[13:] = (0.2, -0.2, 1., -1., 1.)
+
+            obj_pose = self._env.unwrapped._get_object_pose()
+            thdistal_pos = self._env.unwrapped.sim.data.get_body_xpos('robot0:thdistal')
+            grasp_pose = tf.apply_tf(np.r_[0.015, -0.10, 0.075, 1., 0., 0., 0.], obj_pose)
+            pregrasp_pose = tf.apply_tf(np.r_[-0.08, 0., 0., 1., 0., 0., 0.], grasp_pose)
+
+            viewer = self._env.unwrapped.viewer
+            if viewer is not None:
+                tf.render_pose(obj_pose, viewer, size=0.4)
+                tf.render_pose(grasp_pose, viewer, size=0.2)
+                tf.render_pose(pregrasp_pose, viewer, size=0.2)
+
+            k = 2.0
+            d_thresh = 0.008
+            wrist_noise = 0.1
+            arm_pos_noise = 0.01
+            fingers_noise = 0.2
+
+            if self._phase == 0:
+                d = pregrasp_pose[:3] - thdistal_pos
+                d[2] = 0.0
+                arm_pos_noise = 0.05
+                d_thresh = 0.02
+            elif self._phase == 1:
+                d = pregrasp_pose[:3] - thdistal_pos
+                arm_pos_noise = 0.01
+                d_thresh = 0.01
+            elif self._phase == 2:
+                d = grasp_pose[:3] - thdistal_pos
+                fingers_noise = 0.05
+            elif self._phase == 3:
+                fingers_noise = 0.05
+                self._hand_ctrl[:] = 1.0
+                self._hand_ctrl[13:] = (0.1, 0.5, 1., -1., 0)
+                self._grasp_steps += 1
+                if self._grasp_steps > 5:
+                    d = obs['desired_goal'][:3] - obs['achieved_goal'][:3]
+
+            if self._phase < 3 and np.linalg.norm(d) < d_thresh:
+                self._phase += 1
+                self._grasp_steps = 0
+
+            arm_pos_ctrl = d * k
+
         else:
             raise NotImplementedError
 
-        action[1] = wrist_ctrl
-        action[-7:-4] = arm_pos_ctrl
-        action[2:-7] = self._hand_ctrl
+        action[1] = wrist_ctrl + np.random.randn() * wrist_noise
+        action[-7:-4] = arm_pos_ctrl + np.random.randn(*arm_pos_ctrl.shape) * arm_pos_noise
+        action[2:-7] = self._hand_ctrl + np.random.randn(*self._hand_ctrl.shape) * fingers_noise
+        action = np.clip(action, self._env.action_space.low, self._env.action_space.high)
         return action

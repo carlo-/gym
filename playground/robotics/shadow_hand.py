@@ -119,6 +119,8 @@ def generate_grasp_state(max_states=20, file_path=None, render=False, object_id=
             success_steps = 0
             env_steps = 0
             reset = False
+            if render:
+                env.render()
 
         if obs['desired_goal'][2] < 0.48:
             reset = True
