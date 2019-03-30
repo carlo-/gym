@@ -7,7 +7,7 @@ from gym.agents.yumi import YumiBarAgent
 
 def main():
 
-    env = gym.make('YumiBar-v1')
+    env = gym.make('YumiBar-v1', randomize_initial_object_pos=True)
     raw_env = env.unwrapped
     sim = raw_env.sim
     env.render()

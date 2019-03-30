@@ -38,7 +38,8 @@ def _mocap_set_action(sim, action):
 
 class YumiEnv(RobotEnv):
 
-    def __init__(self, *, arm, block_gripper, reward_type, distance_threshold, has_object, ignore_target_rotation=True):
+    def __init__(self, *, arm, block_gripper, reward_type, distance_threshold, has_object,
+                 ignore_target_rotation=True, randomize_initial_object_pos=False):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -52,11 +53,13 @@ class YumiEnv(RobotEnv):
         self.has_object = has_object
         self.distance_threshold = distance_threshold
         self.ignore_target_rotation = ignore_target_rotation
+        self.randomize_initial_object_pos = randomize_initial_object_pos
 
         self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
         self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
         self._target_bounds_r = (np.r_[-0.20, -0.43, 0.05], np.r_[0.35, -0.07, 0.6])
         self._obj_target_bounds = (np.r_[-0.15, -0.15, 0.05], np.r_[0.15, 0.15, 0.25])
+        self._obj_init_bounds = (np.r_[-0.15, -0.15], np.r_[0.15, 0.15])
 
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
@@ -166,6 +169,12 @@ class YumiEnv(RobotEnv):
             gripper_z = self.sim.data.get_site_xpos('gripper_r_center')[2]
             if gripper_z < 0.043:
                 return False
+
+        # Randomize initial position of object.
+        if self.has_object and self.randomize_initial_object_pos:
+            object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+            object_qpos[:2] = self.np_random.uniform(*self._obj_init_bounds)
+            self.sim.data.set_joint_qpos('object0:joint', object_qpos)
 
         return True
 
