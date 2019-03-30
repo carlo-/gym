@@ -25,9 +25,10 @@ def add_selection_logger(viewer: MjViewerBasic, sim: MjSim):
             sel_point = np.zeros(3)
             res = mujoco_py.functions.mjv_select(sim.model, sim.data, viewer.vopt,
                                                  aspect_ratio, x/w, (h-y)/h, viewer.scn, sel_point)
-            sel_body = '?'
+            sel_body, sel_geom = '?', '?'
             if res != -1:
                 sel_body = sim.model.body_id2name(sim.model.geom_bodyid[res])
-            print(f'Selected {sel_body} at {sel_point}')
+                sel_geom = sim.model.geom_id2name(res)
+            print(f'Selected {sel_body} ({sel_geom}) at {sel_point}')
 
     glfw.set_mouse_button_callback(viewer.window, mouse_callback)
