@@ -57,7 +57,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                  randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
                  success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0, target_in_the_air_p=0.5,
-                 object_id='original'):
+                 object_id='original', object_cage=False, cage_opacity=0.1):
 
         self.target_in_the_air_p = target_in_the_air_p
         self.has_object = has_object
@@ -133,6 +133,16 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                     object_geom=xml_format['object_geom'].format(name='object', props=props),
                     target_geom=xml_format['target_geom'].format(name='target', props=props),
                 )
+            if object_cage:
+                rgba = f"1 0 0 {cage_opacity}"
+                xml_format['cage'] = '''
+                <geom pos="0 0.55 0.4" quat="0.924 0.3826 0 0" size="1 0.75 0.01" type="box" mass="200" rgba="{}" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <geom pos="0 -0.55 0.4" quat="0.924 -0.3826 0 0" size="1 0.75 0.01" type="box" mass="200" rgba="{}" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <geom pos="-0.45 0 0.4" quat="0.924 0 0.3826 0" size="0.75 1 0.01" type="box" mass="200" rgba="{}" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <geom pos="0.45 0 0.4" quat="0.924 0 -0.3826 0" size="0.75 1 0.01" type="box" mass="200" rgba="{}" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                '''.format(*[rgba]*4)
+            else:
+                xml_format['cage'] = ''
 
         initial_qpos = initial_qpos or default_qpos
         hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos,

@@ -208,8 +208,10 @@ def main():
         success_on_grasp_only=True,
         randomize_initial_arm_pos=True,
         randomize_initial_object_pos=True,
-        grasp_state=True,
-        grasp_state_reset_p=0.5
+        # grasp_state=True,
+        # grasp_state_reset_p=0.5,
+        object_cage=True,
+        object_id='teapot'
     )
     obs = env.reset()
 
@@ -239,8 +241,8 @@ def main():
 
                 rew, done = env.step(action)[1:3]
                 # print(rew)
-                if done:
-                    env.reset()
+                # if done:
+                #     env.reset()
 
 
 if __name__ == '__main__':
