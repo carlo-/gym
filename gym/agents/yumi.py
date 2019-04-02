@@ -99,6 +99,148 @@ def _simulate_mocap_ctrl(raw_env: YumiEnv, pose_delta, arm):
     return arm_target_qpos
 
 
+class YumiLiftAgent(BaseAgent):
+
+    def __init__(self, env, **kwargs):
+        super(YumiLiftAgent, self).__init__(env, **kwargs)
+        from gym.envs.yumi.yumi_env import YumiLiftEnv
+        assert isinstance(env.unwrapped, YumiLiftEnv)
+
+        self._raw_env = env.unwrapped # type: YumiLiftEnv
+        self._sim = self._raw_env.sim
+        self._dt = env.unwrapped.dt
+        self._target_qs = dict()
+        self._prev_err_l = np.zeros(7)
+        self._prev_err_r = np.zeros(7)
+        self._goal = None
+        self._phase = 0
+        self._phase_steps = 0
+        self._object_geom_name = 'object0_base'
+        self._object_size = None
+
+    def reset(self, new_goal=None):
+        self._target_qs = dict()
+        self._prev_err_l = np.zeros(7)
+        self._prev_err_r = np.zeros(7)
+        self._goal = None
+        self._phase = 0
+        self._phase_steps = 0
+        self._object_size = self._get_object_size()
+        if new_goal is not None:
+            self._goal = new_goal.copy()
+
+    def _controller(self, err, prev_err, k=0.1):
+        d_err = (err - prev_err) / self._dt
+        prev_err[:] = err
+        return -(1.0 * err + 0.05 * d_err) * k
+
+    def _get_object_size(self):
+        geom = self._raw_env.sim.model.geom_name2id(self._object_geom_name)
+        return self._raw_env.sim.model.geom_size[geom].copy()
+
+    def predict(self, obs, **kwargs):
+
+        u = np.zeros(self._env.action_space.shape)
+        new_goal = obs['desired_goal']
+        if self._goal is None or np.any(self._goal != new_goal):
+            self.reset(new_goal)
+
+        obj_radius = self._object_size[0]
+        obj_achieved_alt = obs['achieved_goal'].item()
+        obj_achieved_pose = obs['observation'][44:51]
+        if np.all(obj_achieved_pose[3:] == 0):
+            obj_achieved_pose[3] = 1.0
+        # tf.render_pose(obj_achieved_pose, self._raw_env.viewer, label="O")
+
+        grp_xrot = 0.9 + obj_achieved_alt * 2.0
+
+        curr_grp_poses = {a: np.r_[
+            self._raw_env.sim.data.get_site_xpos(f'gripper_{a}_center'),
+            rotations.mat2quat(self._raw_env.sim.data.get_site_xmat(f'gripper_{a}_center')),
+        ] for a in ('l', 'r')}
+
+        pos_errors = []
+        for arm in ('l', 'r'):
+
+            if arm == 'l':
+                transf = np.r_[0., obj_radius, 0., 1., 0., 0., 0.]
+                if self._phase == 3:
+                    transf[1] *= 0.9
+                    transf[2] = 0.05
+                pose = tf.apply_tf(transf, obj_achieved_pose)
+                # tf.render_pose(pose, self._raw_env.viewer, label="L")
+
+                grp_target_pos = pose[:3]
+                grp_target_rot = np.r_[np.pi - grp_xrot, 0.01, 0.01]
+                target_pose = np.r_[grp_target_pos, rotations.euler2quat(grp_target_rot)]
+
+                prev_err = self._prev_err_l
+                curr_q = obs['observation'][:7]
+                u_masked = u[:7]
+
+            elif arm == 'r':
+                transf = np.r_[0., -obj_radius, 0., 1., 0., 0., 0.]
+                if self._phase == 3:
+                    transf[1] *= 0.9
+                    transf[2] = 0.05
+                pose = tf.apply_tf(transf, obj_achieved_pose)
+                # tf.render_pose(pose, self._raw_env.viewer, label="R")
+
+                grp_target_pos = pose[:3]
+                grp_target_rot = np.r_[-np.pi + grp_xrot, 0.01, np.pi]
+                target_pose = np.r_[grp_target_pos, rotations.euler2quat(grp_target_rot)]
+
+                prev_err = self._prev_err_r
+                curr_q = obs['observation'][16:23]
+                u_masked = u[8:15]
+            else:
+                continue
+
+            u[7] = -1.0
+            u[15] = -1.0
+
+            if self._phase == 0:
+                target_pose[2] += 0.1
+                target_pose[1] += 0.05 * np.sign(target_pose[1])
+            elif self._phase == 1:
+                target_pose[2] += 0.01
+                target_pose[1] += 0.05 * np.sign(target_pose[1])
+            elif self._phase == 2:
+                target_pose[2] += 0.01
+            elif self._phase == 3:
+                target_pose[2] += 0.00
+
+            if self._raw_env.viewer is not None:
+                tf.render_pose(target_pose.copy(), self._raw_env.viewer)
+
+            curr_pose = curr_grp_poses[arm].copy()
+            err_pose = curr_pose - target_pose
+            err_pos = np.linalg.norm(err_pose[:3])
+            pos_errors.append(err_pos)
+
+            controller_k = 2.0
+            err_rot = tf.quat_angle_diff(curr_pose[3:], target_pose[3:])
+            target_q = _simulate_mocap_ctrl(self._raw_env, -err_pose, arm)
+
+            err_q = curr_q - target_q
+            u_masked[:] = self._controller(err_q, prev_err, controller_k)
+
+        self._phase_steps += 1
+        if self._phase == 0 and np.all(np.array(pos_errors) < 0.03) and err_rot < 0.1:
+            self._phase = 1
+            self._phase_steps = 0
+        elif self._phase == 1 and np.all(np.array(pos_errors) < 0.03) and err_rot < 0.1:
+            self._phase = 2
+            self._phase_steps = 0
+        elif self._phase == 2:
+            if self._phase_steps > 30:
+                self._phase = 3
+                self._phase_steps = 0
+
+        u = np.clip(u, self._env.action_space.low, self._env.action_space.high)
+        return u
+
+
 class YumiBarAgent(BaseAgent):
 
     def __init__(self, env, use_qp_solver=False, check_joint_limits=False, use_mocap_ctrl=True, **kwargs):

@@ -489,6 +489,12 @@ register(
     max_episode_steps=250,
 )
 
+register(
+    id='YumiLift-v1',
+    entry_point='gym.envs.yumi:YumiLiftEnv',
+    max_episode_steps=250,
+)
+
 # Atari
 # ----------------------------------------
 

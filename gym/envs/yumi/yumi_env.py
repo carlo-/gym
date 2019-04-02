@@ -1,5 +1,6 @@
 import os
 import copy
+from enum import Enum
 
 import mujoco_py
 import numpy as np
@@ -36,9 +37,15 @@ def _mocap_set_action(sim, action):
         sim.data.mocap_quat[:] = sim.data.mocap_quat + quat_delta
 
 
+class YumiTask(Enum):
+    REACH = 1
+    PICK_AND_PLACE_BAR = 2
+    LIFT_ABOVE_TABLE = 3
+
+
 class YumiEnv(RobotEnv):
 
-    def __init__(self, *, arm, block_gripper, reward_type, distance_threshold, has_object,
+    def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
                  ignore_target_rotation=True, randomize_initial_object_pos=False):
 
         if arm not in ['right', 'left', 'both']:
@@ -49,8 +56,14 @@ class YumiEnv(RobotEnv):
             raise ValueError
         self.reward_type = reward_type
 
+        self.task = task
+        if task == YumiTask.LIFT_ABOVE_TABLE:
+            if reward_type == 'sparse':
+                raise NotImplementedError
+            if arm != 'both':
+                raise NotImplementedError
+
         self.block_gripper = block_gripper
-        self.has_object = has_object
         self.distance_threshold = distance_threshold
         self.ignore_target_rotation = ignore_target_rotation
         self.randomize_initial_object_pos = randomize_initial_object_pos
@@ -61,10 +74,14 @@ class YumiEnv(RobotEnv):
         self._obj_target_bounds = (np.r_[-0.15, -0.15, 0.05], np.r_[0.15, 0.15, 0.25])
         self._obj_init_bounds = (np.r_[-0.15, -0.15], np.r_[0.15, 0.15])
 
+        if task == YumiTask.LIFT_ABOVE_TABLE:
+            self._obj_init_bounds = (np.r_[-0.05, -0.05], np.r_[0.05, 0.05])
+
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
         self._arm_r_joint_idx = None
         self._arm_l_joint_idx = None
+        self._object_z_offset = 0.0
 
         self._gripper_joint_max = 0.02
         n_actions = 7
@@ -73,7 +90,7 @@ class YumiEnv(RobotEnv):
         if arm == 'both':
             n_actions *= 2
 
-        if self.has_object:
+        if self.task == YumiTask.PICK_AND_PLACE_BAR:
             object_xml = """
             <body name="object0" pos="0.025 0.025 0.025">
                 <joint name="object0:joint" type="free" damping="0.01"/>
@@ -92,12 +109,24 @@ class YumiEnv(RobotEnv):
                 <site name="target0:right" pos="0 -0.125 0" size="0.02 0.02 0.02" rgba="1 0 0 0.5" type="sphere"/>
             </body>
             """
+        elif self.task == YumiTask.LIFT_ABOVE_TABLE:
+            object_xml = """
+            <body name="object0" pos="0.025 0.025 0.025">
+                <joint name="object0:joint" type="free" damping="0.01"/>
+                <geom size="0.120 0.025" type="cylinder" condim="4" name="object0_base" material="block_mat" mass="1.0" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <site name="object0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 1" type="sphere"/>
+            </body>
+            """
         else:
             object_xml = ""
 
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
         super(YumiEnv, self).__init__(model_path=model_path, n_substeps=5,
                                       n_actions=n_actions, initial_qpos=None, xml_format=dict(object=object_xml))
+
+    @property
+    def has_object(self):
+        return self.task != YumiTask.REACH
 
     def mocap_control(self, action):
         reset_mocap2body_xpos(self.sim)
@@ -112,10 +141,10 @@ class YumiEnv(RobotEnv):
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: dict):
         assert achieved_goal.shape == desired_goal.shape
         if self.reward_type == 'sparse':
-            if self.has_object:
+            if self.task == YumiTask.PICK_AND_PLACE_BAR:
                 success = self._is_success(achieved_goal, desired_goal)
                 return success - 1
-            else:
+            elif self.task == YumiTask.REACH:
                 success_l = float(self.has_left_arm) * self._is_success(achieved_goal[..., :3], desired_goal[..., :3])
                 success_r = float(self.has_right_arm) * self._is_success(achieved_goal[..., 3:], desired_goal[..., 3:])
                 success = success_l + success_r
@@ -123,6 +152,8 @@ class YumiEnv(RobotEnv):
                     return success - 2
                 else:
                     return success - 1
+            else:
+                raise NotImplementedError
         else:
             d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
             return -d
@@ -219,7 +250,8 @@ class YumiEnv(RobotEnv):
         object_pose = np.zeros(0)
         object_velp = np.zeros(0)
         object_velr = np.zeros(0)
-        if self.has_object:
+
+        if self.task == YumiTask.PICK_AND_PLACE_BAR:
             # Achieved goal is object position and quaternion
             object_pose = np.zeros(7)
             object_pose[:3] = self.sim.data.get_body_xpos('object0')
@@ -232,13 +264,26 @@ class YumiEnv(RobotEnv):
                 gripper_r_to_obj = self.sim.data.get_site_xpos('object0:right') - gripper_r_pos
             object_velp = self.sim.data.get_site_xvelp('object0:center') * dt
             object_velr = self.sim.data.get_site_xvelr('object0:center') * dt
-        else:
+
+        elif self.task == YumiTask.REACH:
             # Achieved goal is gripper(s) position(s)
             achieved_goal = np.zeros(6)
             if self.has_left_arm:
                 achieved_goal[:3] = gripper_l_pos.copy()
             if self.has_right_arm:
                 achieved_goal[3:] = gripper_r_pos.copy()
+
+        elif self.task == YumiTask.LIFT_ABOVE_TABLE:
+            # Achieved goal is distance above table
+            object_pose = np.zeros(7)
+            object_pose[:3] = self.sim.data.get_body_xpos('object0')
+            if not self.ignore_target_rotation:
+                object_pose[3:] = self.sim.data.get_body_xquat('object0')
+            d_above_table = object_pose[2] - self._object_z_offset
+            achieved_goal = np.r_[d_above_table]
+
+        else:
+            raise NotImplementedError
 
         obs = np.concatenate([
             arm_l_qpos, arm_l_qvel, gripper_l_qpos,
@@ -281,12 +326,12 @@ class YumiEnv(RobotEnv):
         return (d < self.distance_threshold).astype(np.float32)
 
     def _sample_goal(self):
-        if self.has_object:
+        if self.task == YumiTask.PICK_AND_PLACE_BAR:
             # Goal is object target position and quaternion
             new_goal = np.zeros(7)
             new_goal[:3] = self.np_random.uniform(*self._obj_target_bounds)
             # TODO: Randomize rotation
-        else:
+        elif self.task == YumiTask.REACH:
             # Goal is gripper(s) target position(s)
             new_goal = np.zeros(6)
             old_state = copy.deepcopy(self.sim.get_state())
@@ -306,6 +351,12 @@ class YumiEnv(RobotEnv):
                         break
             self.sim.set_state(old_state)
             self.sim.forward()
+        elif self.task == YumiTask.LIFT_ABOVE_TABLE:
+            # Object should be 40cm above the table
+            # This is not actually feasible, but should work well regardless.
+            new_goal = np.r_[0.40]
+        else:
+            raise NotImplementedError
         return new_goal
 
     def _env_setup(self, initial_qpos):
@@ -339,6 +390,11 @@ class YumiEnv(RobotEnv):
         if self.has_right_arm:
             self._initial_r_gripper_pos = self.sim.data.get_site_xpos('gripper_r_center').copy()
 
+        if self.has_object:
+            for _ in range(10):
+                self.sim.step()
+            self._object_z_offset = self.sim.data.get_body_xpos('object0')[2]
+
         self._reset_sim()
 
     def _viewer_setup(self):
@@ -348,11 +404,11 @@ class YumiEnv(RobotEnv):
 
     def _step_callback(self):
         # Visualize target.
-        if self.has_object:
+        if self.task == YumiTask.PICK_AND_PLACE_BAR:
             bodies_offset = (self.sim.data.body_xpos - self.sim.model.body_pos).copy()
             body_id = self.sim.model.body_name2id('target0')
             self.sim.model.body_pos[body_id, :] = self.goal[:3] - bodies_offset[body_id]
-        else:
+        elif self.task == YumiTask.REACH:
             sites_offset = (self.sim.data.site_xpos - self.sim.model.site_pos).copy()
             if self.has_left_arm:
                 site_id = self.sim.model.site_name2id('target_l')
@@ -436,7 +492,7 @@ class YumiReachEnv(YumiEnv, EzPickle):
     def __init__(self, **kwargs):
         default_kwargs = dict(block_gripper=True, reward_type='sparse', distance_threshold=0.05)
         merged = {**default_kwargs, **kwargs}
-        super().__init__(has_object=False, **merged)
+        super().__init__(task=YumiTask.REACH, **merged)
         EzPickle.__init__(self)
 
 
@@ -459,5 +515,13 @@ class YumiBarEnv(YumiEnv, EzPickle):
     def __init__(self, **kwargs):
         default_kwargs = dict(arm='both', block_gripper=False, reward_type='sparse', distance_threshold=0.05)
         merged = {**default_kwargs, **kwargs}
-        super().__init__(has_object=True, **merged)
+        super().__init__(task=YumiTask.PICK_AND_PLACE_BAR, **merged)
+        EzPickle.__init__(self)
+
+
+class YumiLiftEnv(YumiEnv, EzPickle):
+    def __init__(self, **kwargs):
+        default_kwargs = dict(block_gripper=False)
+        merged = {**default_kwargs, **kwargs}
+        super().__init__(task=YumiTask.LIFT_ABOVE_TABLE, arm='both', reward_type='dense', **merged)
         EzPickle.__init__(self)

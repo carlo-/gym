@@ -5,6 +5,9 @@ class BaseAgent(object):
         super(BaseAgent).__init__()
         self._env = env
 
+    def reset(self, **kwargs):
+        pass
+
     def predict(self, obs, **kwargs):
         raise NotImplementedError()
 
