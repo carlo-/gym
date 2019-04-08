@@ -462,6 +462,13 @@ for reward_type in ['sparse', 'dense']:
         max_episode_steps=100,
     )
 
+
+register(
+    id='HandStepped-v0',
+    entry_point='gym.envs.robotics:HandSteppedEnv',
+    max_episode_steps=5,
+)
+
 # YuMi
 # ----------------------------------------
 
