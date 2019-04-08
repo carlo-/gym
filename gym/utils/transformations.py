@@ -57,7 +57,11 @@ def render_pose(pose: np.ndarray, viewer, label="", size=0.2):
     elif pose.size == 7:
         quat = pose[3:]
     else:
-        raise ValueError
+        viewer.add_marker(
+            pos=pos, label=label, type=mj_const.GEOM_SPHERE, size=np.ones(3)*0.01,
+            rgba=np.r_[np.random.uniform(0.2, 1.0, 3), 1.], specular=0.
+        )
+        return
     for i in range(3):
         rgba = np.zeros(4)
         rgba[[i, 3]] = 1.
@@ -67,6 +71,29 @@ def render_pose(pose: np.ndarray, viewer, label="", size=0.2):
             pos=pos, mat=rotations.quat2mat(rot).flatten(), label=(label if i == 0 else ""),
             type=mj_const.GEOM_ARROW, size=np.r_[0.01, 0.01, size], rgba=rgba, specular=0.
         )
+
+
+def render_box(viewer, bounds: np.ndarray=None, pose: np.ndarray=None, size: np.ndarray=None, label="", opacity=0.2):
+    if bounds is not None:
+        assert size is None
+        assert bounds.shape == (3, 2)
+        pose = pose or np.zeros(3)
+        pose[:3] = bounds.mean(axis=1)
+        size = np.abs(bounds[:, 1] - bounds[:, 0]) / 2.0
+    else:
+        assert pose is not None
+        assert size is not None
+    pos = pose[:3]
+    if pose.size == 6:
+        mat = rotations.euler2mat(pose[3:])
+    elif pose.size == 7:
+        mat = rotations.quat2mat(pose[3:])
+    else:
+        mat = np.eye(3)
+    viewer.add_marker(
+        pos=pos, mat=mat.flatten(), label=label, type=mj_const.GEOM_BOX, size=size,
+        rgba=np.r_[1., 0., 0., opacity], specular=0.
+    )
 
 
 class TFDebugger:
