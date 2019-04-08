@@ -65,6 +65,9 @@ class HandSteppedEnv(gym.GoalEnv):
     # Env methods
     # ----------------------------
 
+    def seed(self, seed=None):
+        self.sim_env.seed(seed)
+
     def step(self, action: np.ndarray):
         action = np.clip(action, self.action_space.low, self.action_space.high)
         fingers_pos_wrt_obj = action[:(3*5)].reshape(-1, 3) * np.r_[0.03, 0.03, 0.03]
