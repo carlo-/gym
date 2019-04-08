@@ -75,7 +75,8 @@ class HandSteppedEnv(gym.GoalEnv):
             arm_pos_wrt_world = action[(3*5):]
 
         arm_bounds = np.array(self.sim_env.forearm_bounds).T
-        tf.render_box(self.viewer, bounds=arm_bounds)
+        if self.render_substeps:
+            tf.render_box(self.viewer, bounds=arm_bounds)
 
         arm_pos_wrt_world *= np.abs(arm_bounds[:, 1] - arm_bounds[:, 0]) / 2.0
         arm_pos_wrt_world += arm_bounds.mean(axis=1)
