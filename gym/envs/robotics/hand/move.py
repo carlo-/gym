@@ -18,9 +18,18 @@ except ImportError as e:
 HAND_PICK_AND_PLACE_XML = os.path.join('hand', 'pick_and_place.xml')
 HAND_MOVE_AND_REACH_XML = os.path.join('hand', 'move_and_reach.xml')
 
+FINGERTIP_BODY_NAMES = [
+    'robot0:ffdistal',
+    'robot0:mfdistal',
+    'robot0:rfdistal',
+    'robot0:lfdistal',
+    'robot0:thdistal',
+]
+
 OBJECTS = dict(
     original=dict(type='ellipsoid', size='0.03 0.03 0.04'),
     small_box=dict(type='box', size='0.022 0.022 0.022'),
+    box=dict(type='box', size='0.03 0.03 0.03'),
     sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
     small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
     teapot=dict(type='mesh', mesh='object_mesh:teapot_vhacd_m', mesh_parts=6, mass=[0.01, 0.01, 0.01, 0.5, 0.01, 0.01]),
@@ -57,7 +66,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
                  randomize_initial_arm_pos=False, randomize_initial_object_pos=True, ignore_rotation_ctrl=False,
                  distance_threshold=0.05, rotation_threshold=0.1, n_substeps=20, ignore_target_rotation=False,
                  success_on_grasp_only=False, grasp_state=None, grasp_state_reset_p=0.0, target_in_the_air_p=0.5,
-                 object_id='original', object_cage=False, cage_opacity=0.1):
+                 object_id='original', object_cage=False, cage_opacity=0.1, weld_fingers=False):
 
         self.target_in_the_air_p = target_in_the_air_p
         self.has_object = has_object
@@ -70,7 +79,7 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         self.reward_type = reward_type
         self.success_on_grasp_only = success_on_grasp_only
         self.object_id = object_id
-        self.forearm_bounds = (np.r_[0.5, 0.3, 0.42], np.r_[1.75, 1.2, 1.1])
+        self.forearm_bounds = (np.r_[0.65, 0.3, 0.42], np.r_[1.75, 1.2, 1.0])
         self.table_safe_bounds = (np.r_[1.10, 0.43], np.r_[1.49, 1.05])
         self._initial_arm_mocap_pose = np.r_[1.05, 0.75, 0.65, rotations.euler2quat(np.r_[0., 1.59, 1.57])]
 
@@ -144,12 +153,29 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             else:
                 xml_format['cage'] = ''
 
+        if weld_fingers:
+            mocap_tp = '''
+            <body mocap="true" name="{}:mocap" pos="0 0 0">
+                <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.7" size="0.005 0.005 0.005" type="box"/>
+                <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.1" size="1 0.005 0.005" type="box"/>
+                <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.1" size="0.005 1 0.001" type="box"/>
+                <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.1" size="0.005 0.005 1" type="box"/>
+            </body>
+            '''
+            weld_tp = '<weld body1="{}:mocap" body2="{}" solimp="0.9 0.95 0.001" solref="0.02 1"/>'
+            fingertip_names = [x.replace('robot0:', '') for x in FINGERTIP_BODY_NAMES]
+            xml_format['finger_mocaps'] = '\n'.join([mocap_tp.format(n) for n in fingertip_names])
+            xml_format['finger_welds'] = '\n'.join([weld_tp.format(m, f) for m, f in zip(fingertip_names, FINGERTIP_BODY_NAMES)])
+        else:
+            xml_format['finger_welds'] = ''
+            xml_format['finger_mocaps'] = ''
+
         initial_qpos = initial_qpos or default_qpos
         hand_env.HandEnv.__init__(self, model_path, n_substeps=n_substeps, initial_qpos=initial_qpos,
                                   relative_control=relative_control, arm_control=True, xml_format=xml_format)
         utils.EzPickle.__init__(self)
 
-    def get_object_contact_points(self):
+    def get_object_contact_points(self, other_body='robot0:'):
         if not self.has_object:
             raise NotImplementedError("Cannot get object contact points in an environment without objects!")
 
@@ -167,8 +193,8 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
             body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
 
-            if body_name_1.startswith('robot0:') and body_name_2 == object_name or \
-               body_name_2.startswith('robot0:') and body_name_1 == object_name:
+            if other_body in body_name_1 and body_name_2 == object_name or \
+               other_body in body_name_2 and body_name_1 == object_name:
 
                 c_force = np.zeros(6, dtype=np.float64)
                 mujoco_py.functions.mj_contactForce(sim.model, sim.data, i, c_force)
