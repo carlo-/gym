@@ -1,3 +1,5 @@
+import uuid
+
 import numpy as np
 from mujoco_py import const as mj_const
 
@@ -45,12 +47,38 @@ def apply_tf_old(a_to_b: np.ndarray, world_to_a: np.ndarray) -> np.ndarray:
 
 def apply_tf(a_to_b: np.ndarray, world_to_a: np.ndarray) -> np.ndarray:
     """Returns world_to_b pose"""
+    pos_only = False
+    if world_to_a.size == 3:
+        world_to_a = np.r_[world_to_a, 1., 0., 0., 0.]
+        pos_only = True
+    if a_to_b.size == 3:
+        a_to_b = np.r_[a_to_b, 1., 0., 0., 0.]
     new_pos = world_to_a[:3] + rotations.quat_rot_vec(world_to_a[3:], a_to_b[:3])
-    new_quat = rotations.quat_mul(a_to_b[3:], world_to_a[3:])
+    # new_quat = rotations.quat_mul(a_to_b[3:], world_to_a[3:])
+    new_quat = rotations.quat_mul(world_to_a[3:], a_to_b[3:])
+    if pos_only:
+        return new_pos
     return np.concatenate([new_pos, new_quat], axis=-1)
 
 
-def render_pose(pose: np.ndarray, viewer, label="", size=0.2):
+def render_pose(pose: np.ndarray, viewer, label="", size=0.2, unique_id=None, unique_label=False):
+
+    if viewer is None:
+        return
+
+    rgba = np.r_[np.random.uniform(0.2, 1.0, 3), 1.]
+    extra_kwargs = dict()
+    if unique_label:
+        unique_id = hash(label) % np.iinfo(np.int32).max
+    if unique_id is not None:
+        extra_kwargs['dataid'] = unique_id
+        with viewer._gui_lock:
+            existing = [i for i, m in enumerate(viewer._markers) if m.get('dataid') == unique_id]
+            if len(existing) == 1:
+                rgba = viewer._markers[existing[0]]['rgba']
+            for i in existing[::-1]:
+                del viewer._markers[i]
+
     pos = pose[:3]
     if pose.size == 6:
         quat = rotations.euler2quat(pose[3:])
@@ -59,7 +87,7 @@ def render_pose(pose: np.ndarray, viewer, label="", size=0.2):
     else:
         viewer.add_marker(
             pos=pos, label=label, type=mj_const.GEOM_SPHERE, size=np.ones(3)*0.01,
-            rgba=np.r_[np.random.uniform(0.2, 1.0, 3), 1.], specular=0.
+            rgba=rgba, specular=0., **extra_kwargs
         )
         return
     for i in range(3):
@@ -69,11 +97,26 @@ def render_pose(pose: np.ndarray, viewer, label="", size=0.2):
         rot = rotations.quat_mul(quat, rotations.euler2quat(tf))
         viewer.add_marker(
             pos=pos, mat=rotations.quat2mat(rot).flatten(), label=(label if i == 0 else ""),
-            type=mj_const.GEOM_ARROW, size=np.r_[0.01, 0.01, size], rgba=rgba, specular=0.
+            type=mj_const.GEOM_ARROW, size=np.r_[0.01, 0.01, size], rgba=rgba, specular=0., **extra_kwargs
         )
 
 
-def render_box(viewer, bounds: np.ndarray=None, pose: np.ndarray=None, size: np.ndarray=None, label="", opacity=0.2):
+def render_box(viewer, bounds: np.ndarray=None, pose: np.ndarray=None, size: np.ndarray=None,
+               label="", opacity=0.2, unique_id=None, unique_label=False):
+
+    if viewer is None:
+        return
+
+    extra_kwargs = dict()
+    if unique_label:
+        unique_id = hash(label) % np.iinfo(np.int32).max
+    if unique_id is not None:
+        extra_kwargs['dataid'] = unique_id
+        with viewer._gui_lock:
+            existing = [i for i, m in enumerate(viewer._markers) if m['dataid'] == unique_id]
+            for i in existing[::-1]:
+                del viewer._markers[i]
+
     if bounds is not None:
         assert size is None
         assert bounds.shape == (3, 2)
@@ -92,7 +135,7 @@ def render_box(viewer, bounds: np.ndarray=None, pose: np.ndarray=None, size: np.
         mat = np.eye(3)
     viewer.add_marker(
         pos=pos, mat=mat.flatten(), label=label, type=mj_const.GEOM_BOX, size=size,
-        rgba=np.r_[1., 0., 0., opacity], specular=0.
+        rgba=np.r_[1., 0., 0., opacity], specular=0., **extra_kwargs
     )
 
 
@@ -101,6 +144,7 @@ class TFDebugger:
     i = 0
     ob1_pose = None
     ob2_pose = None
+    unique_ids = None
     tf = None
 
     def __init__(self):
@@ -112,6 +156,7 @@ class TFDebugger:
         cls.ob1_pose = np.r_[0.025, 0.025, 0.825, 1, 0, 0, 0]
         cls.ob2_pose = np.r_[0.025, 0.25, 0.825, 1, 0, 0, 0]
         cls.tf = None
+        cls.unique_ids = np.random.randint(1_000, 1_000_000_000, size=3, dtype=int)
 
     @classmethod
     def step(cls, viewer):
@@ -121,15 +166,15 @@ class TFDebugger:
         q_common = rotations.quat_mul(q0, q1)
 
         cls.ob1_pose[3:] = q_common.copy()
-        render_pose(cls.ob1_pose, viewer)
+        render_pose(cls.ob1_pose, viewer, unique_id=cls.unique_ids[0].item())
 
         cls.ob2_pose[3:] = q_common.copy()
-        render_pose(cls.ob2_pose, viewer)
+        render_pose(cls.ob2_pose, viewer, unique_id=cls.unique_ids[1].item())
 
         if cls.i < 37:
             cls.tf = get_tf(cls.ob1_pose, cls.ob2_pose)  # 2_to_1
             cls.i += 1
         else:
-            ob1_pose_back = apply_tf_old(cls.tf, cls.ob2_pose)
+            ob1_pose_back = apply_tf(cls.tf, cls.ob2_pose)
             ob1_pose_back[2] -= 0.0
-            render_pose(apply_tf_old(cls.tf, cls.ob2_pose), viewer)
+            render_pose(apply_tf(cls.tf, cls.ob2_pose), viewer, unique_id=cls.unique_ids[2].item())

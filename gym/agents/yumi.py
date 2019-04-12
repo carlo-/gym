@@ -83,22 +83,6 @@ def _solve_qp_ik_pos(current_pose, target_pose, jac, joint_pos, joint_lims=None,
     return new_q
 
 
-def _simulate_mocap_ctrl(raw_env: YumiEnv, pose_delta, arm):
-    prev_s = copy.deepcopy(raw_env.sim.get_state())
-    mocap_a = np.zeros((raw_env.sim.model.nmocap, 7))
-    if arm == 'l' or (arm == 'r' and not raw_env.has_two_arms):
-        mocap_a[0] = pose_delta
-    elif arm == 'r':
-        mocap_a[1] = pose_delta
-    else:
-        raise NotImplementedError
-    raw_env.mocap_control(mocap_a)
-    target_qpos = raw_env.sim.data.qpos.copy()
-    raw_env.sim.set_state(prev_s)
-    arm_target_qpos = target_qpos[getattr(raw_env, f'_arm_{arm}_joint_idx')]
-    return arm_target_qpos
-
-
 class YumiLiftAgent(BaseAgent):
 
     def __init__(self, env, **kwargs):
@@ -220,7 +204,7 @@ class YumiLiftAgent(BaseAgent):
 
             controller_k = 2.0
             err_rot = tf.quat_angle_diff(curr_pose[3:], target_pose[3:])
-            target_q = _simulate_mocap_ctrl(self._raw_env, -err_pose, arm)
+            target_q = self._raw_env.mocap_ik(-err_pose, arm)
 
             err_q = curr_q - target_q
             u_masked[:] = self._controller(err_q, prev_err, controller_k)
@@ -460,7 +444,7 @@ class YumiBarAgent(BaseAgent):
                 else:
                     controller_k = 2.5
                 err_rot = tf.quat_angle_diff(curr_pose[3:], target_pose[3:])
-                target_q = _simulate_mocap_ctrl(self._raw_env, -err_pose, arm)
+                target_q = self._raw_env.mocap_ik(-err_pose, arm)
             else:
                 controller_k = 0.1
                 err_rot = 0.0
@@ -616,7 +600,7 @@ class YumiReachAgent(BaseAgent):
             if self.use_mocap_ctrl:
                 controller_k = 2.0
                 pose_delta = np.r_[target_pos - achieved_pos, 0., 0., 0., 0.]
-                target_q = _simulate_mocap_ctrl(self._raw_env, pose_delta, arm)
+                target_q = self._raw_env.mocap_ik(pose_delta, arm)
             else:
                 controller_k = 1.0
                 err_pos = np.linalg.norm(achieved_pos - target_pos)

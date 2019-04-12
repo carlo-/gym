@@ -502,6 +502,12 @@ register(
     max_episode_steps=250,
 )
 
+register(
+    id='YumiStepped-v1',
+    entry_point='gym.envs.yumi:YumiSteppedEnv',
+    max_episode_steps=5,
+)
+
 # Atari
 # ----------------------------------------
 

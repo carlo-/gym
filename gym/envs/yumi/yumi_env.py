@@ -33,8 +33,8 @@ def _mocap_set_action(sim, action):
         pos_delta = action[:, :3]
         quat_delta = action[:, 3:]
         reset_mocap2body_xpos(sim)
-        sim.data.mocap_pos[:] = sim.data.mocap_pos + pos_delta
-        sim.data.mocap_quat[:] = sim.data.mocap_quat + quat_delta
+        sim.data.mocap_pos[:] += pos_delta
+        sim.data.mocap_quat[:] += quat_delta
 
 
 class YumiTask(Enum):
@@ -134,6 +134,57 @@ class YumiEnv(RobotEnv):
         _mocap_set_action(self.sim, action)
         self.sim.step()
         self.sim.model.eq_active[:] = 0
+
+    def mocap_ik(self, pose_delta, arm):
+        prev_s = copy.deepcopy(self.sim.get_state())
+        mocap_a = np.zeros((self.sim.model.nmocap, 7))
+        if arm == 'l' or (arm == 'r' and not self.has_two_arms):
+            mocap_a[0] = pose_delta
+        elif arm == 'r':
+            mocap_a[1] = pose_delta
+        else:
+            raise NotImplementedError
+        self.mocap_control(mocap_a)
+        target_qpos = self.sim.data.qpos.copy()
+        self.sim.set_state(prev_s)
+        arm_target_qpos = target_qpos[getattr(self, f'_arm_{arm}_joint_idx')]
+        return arm_target_qpos
+
+    def get_object_contact_points(self, other_body='gripper'):
+        if not self.has_object:
+            raise NotImplementedError("Cannot get object contact points in an environment without objects!")
+
+        sim = self.sim
+        object_name = 'object0'
+        object_pos = self.sim.data.get_body_xpos(object_name)
+        object_rot = self.sim.data.get_body_xmat(object_name)
+        contact_points = []
+
+        # Partially from: https://gist.github.com/machinaut/209c44e8c55245c0d0f0094693053158
+        for i in range(sim.data.ncon):
+            # Note that the contact array has more than `ncon` entries,
+            # so be careful to only read the valid entries.
+            contact = sim.data.contact[i]
+            body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
+            body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
+
+            if other_body in body_name_1 and body_name_2 == object_name or \
+               other_body in body_name_2 and body_name_1 == object_name:
+
+                c_force = np.zeros(6, dtype=np.float64)
+                mujoco_py.functions.mj_contactForce(sim.model, sim.data, i, c_force)
+
+                # Compute contact point position wrt the object
+                rel_contact_pos = object_rot.T @ (contact.pos - object_pos)
+
+                contact_points.append(dict(
+                    body1=body_name_1,
+                    body2=body_name_2,
+                    relative_pos=rel_contact_pos,
+                    force=c_force
+                ))
+
+        return contact_points
 
     # GoalEnv methods
     # ----------------------------
