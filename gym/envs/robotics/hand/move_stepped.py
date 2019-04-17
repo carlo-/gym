@@ -17,6 +17,11 @@ class HandSteppedTask(Enum):
     LIFT_ABOVE_TABLE = 2
 
 
+def _smooth_step(x):
+    # https://www.desmos.com/calculator/oygnwcuvaz
+    return 1 / (1 + np.exp(-20 * (x - 0.20)))
+
+
 class HandSteppedEnv(gym.GoalEnv):
 
     def __init__(self, *, task: HandSteppedTask=None, render_substeps=False):
@@ -29,13 +34,13 @@ class HandSteppedEnv(gym.GoalEnv):
         self._qp_solver = None
         self.task = task or HandSteppedTask.LIFT_ABOVE_TABLE
         self.render_substeps = render_substeps
-        self.sim_env = HandPickAndPlaceEnv(weld_fingers=False, object_id='box')
+        self.sim_env = HandPickAndPlaceEnv(reward_type='dense', target_in_the_air_p=1.0,
+                                           weld_fingers=False, object_id='box')
         self.goal = self._sample_goal()
         obs = self._get_obs()
 
         if self.task == HandSteppedTask.PICK_AND_PLACE:
-            # n_actions = 3 * 6
-            raise NotImplementedError
+            n_actions = 3 * 6
         elif self.task == HandSteppedTask.LIFT_ABOVE_TABLE:
             n_actions = 3 * 5
         else:
@@ -74,8 +79,10 @@ class HandSteppedEnv(gym.GoalEnv):
 
         if self.task == HandSteppedTask.LIFT_ABOVE_TABLE:
             arm_pos_wrt_world = np.zeros(3)
-        else:
+        elif self.task == HandSteppedTask.PICK_AND_PLACE:
             arm_pos_wrt_world = action[(3*5):]
+        else:
+            raise NotImplementedError
 
         arm_bounds = np.array(self.sim_env.forearm_bounds).T
         if self.render_substeps:
@@ -95,7 +102,7 @@ class HandSteppedEnv(gym.GoalEnv):
         # self.sim.data.mocap_pos[1:] = fingers_pos_targets[:, :3]
 
         if self.render_substeps:
-            tf.render_pose(arm_pos_wrt_world, self.sim_env.viewer, label='arm_t')
+            tf.render_pose(arm_pos_wrt_world.copy(), self.sim_env.viewer, label='arm_t')
             # for i, f in enumerate(fingers_pos_targets):
             #     tf.render_pose(f, self.sim_env.viewer, label=f'f_{i}')
 
@@ -121,9 +128,14 @@ class HandSteppedEnv(gym.GoalEnv):
         if self.task == HandSteppedTask.LIFT_ABOVE_TABLE:
             info = dict()
             reward = stable_steps
-        else:
+        elif self.task == HandSteppedTask.PICK_AND_PLACE:
             info = {'is_success': self.sim_env._is_success(obs['achieved_goal'], self.goal)}
-            reward = self.compute_reward(obs['achieved_goal'], self.goal, info)
+            dist_to_goal = np.linalg.norm(self.goal[:3] - self.sim_env._get_object_pose()[:3])
+            dist_reward = 100 / (1 + dist_to_goal*_smooth_step(dist_to_goal) * 100) # range: [0, 100]
+            alpha = 0.25
+            reward = dist_reward * alpha + stable_steps * (1 - alpha)
+        else:
+            raise NotImplementedError
 
         return obs, reward, done, info
 
@@ -138,18 +150,28 @@ class HandSteppedEnv(gym.GoalEnv):
     def reset(self):
         self.sim.model.eq_active[1:] = 0
         self.sim_env.reset()
+        self.goal = self._sample_goal()
         return self._get_obs()
 
     # GoalEnv methods
     # ----------------------------
 
+    @property
+    def goal(self):
+        return self.sim_env.goal
+
+    @goal.setter
+    def goal(self, value):
+        self.sim_env.goal = value
+
     def compute_reward(self, *args, **kwargs):
-        if self.task == HandSteppedTask.LIFT_ABOVE_TABLE:
-            raise NotImplementedError
-        return self.sim_env.compute_reward(*args, **kwargs)
+        raise NotImplementedError
 
     def _sample_goal(self):
-        return self.sim_env._sample_goal()
+        new_goal = None
+        while new_goal is None or new_goal[2] < 0.60:
+            new_goal = self.sim_env._sample_goal()
+        return new_goal
 
     def _get_obs(self):
         sim_obs = self.sim_env._get_obs()
@@ -317,3 +339,8 @@ class HandSteppedEnv(gym.GoalEnv):
         jacobians = np.concatenate(jacobians)
         sol, opt = kin.solve_qp_ik_vel(velocities, jacobians, all_qpos, solver=self._qp_solver)
         return sol, opt, all_ctrl_idx
+
+
+class HandPickAndPlaceSteppedEnv(HandSteppedEnv):
+    def __init__(self, **kwargs):
+        super(HandPickAndPlaceSteppedEnv, self).__init__(task=HandSteppedTask.PICK_AND_PLACE, **kwargs)

@@ -59,7 +59,7 @@ def action_thread():
 def main():
 
     env = gym.make(
-        'HandStepped-v0',
+        'HandPickAndPlaceStepped-v0',
         render_substeps=True,
     )
     obs = env.reset()
@@ -91,12 +91,19 @@ def main():
 
         for j in range(6):
 
-            env.reset()
+            obs = env.reset()
             # for val in np.linspace(-1, 1, 60):
             while True:
 
                 env.render()
-                action = np.zeros(15)
+                action = np.zeros(env.action_space.shape)
+
+                if action.size == 18:
+                    goal = obs['desired_goal'][:3].copy()
+                    arm_bounds = np.array(env.unwrapped.sim_env.forearm_bounds).T
+                    goal -= arm_bounds.mean(axis=1)
+                    goal /= np.abs(arm_bounds[:, 1] - arm_bounds[:, 0]) / 2.0
+                    action[15:] = goal
 
                 # lfdistal: 3, rfdistal: 2, mfdistal: 1, ffdistal: 0, thdistal: 4
 
@@ -126,7 +133,7 @@ def main():
                 action[6] = closed_pos
                 action[7] = -closed_pos
 
-                rew, done = env.step(action)[1:3]
+                obs, rew, done = env.step(action)[:3]
 
                 # action = selected_action.copy()
                 # action[-7:] *= 0.2
@@ -135,7 +142,7 @@ def main():
 
                 print(rew)
                 if done:
-                    env.reset()
+                    obs = env.reset()
 
 
 if __name__ == '__main__':

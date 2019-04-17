@@ -469,6 +469,12 @@ register(
     max_episode_steps=5,
 )
 
+register(
+    id='HandPickAndPlaceStepped-v0',
+    entry_point='gym.envs.robotics:HandPickAndPlaceSteppedEnv',
+    max_episode_steps=5,
+)
+
 # YuMi
 # ----------------------------------------
 
