@@ -514,6 +514,12 @@ register(
     max_episode_steps=5,
 )
 
+register(
+    id='YumiConstrained-v1',
+    entry_point='gym.envs.yumi:YumiConstrainedEnv',
+    max_episode_steps=50,
+)
+
 # Atari
 # ----------------------------------------
 

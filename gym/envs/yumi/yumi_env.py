@@ -37,16 +37,26 @@ def _mocap_set_action(sim, action):
         sim.data.mocap_quat[:] += quat_delta
 
 
+OBJECTS = dict(
+    egg=dict(type='ellipsoid', size='0.03 0.03 0.04'),
+    small_box=dict(type='box', size='0.022 0.022 0.022'),
+    box=dict(type='box', size='0.03 0.03 0.03'),
+    sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
+    small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
+)
+
+
 class YumiTask(Enum):
     REACH = 1
     PICK_AND_PLACE_BAR = 2
     LIFT_ABOVE_TABLE = 3
+    PICK_AND_PLACE_OBJECT = 4
 
 
 class YumiEnv(RobotEnv):
 
     def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
-                 ignore_target_rotation=True, randomize_initial_object_pos=False):
+                 ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -115,6 +125,24 @@ class YumiEnv(RobotEnv):
                 <joint name="object0:joint" type="free" damping="0.01"/>
                 <geom size="0.120 0.025" type="cylinder" condim="4" name="object0_base" material="block_mat" mass="1.0" solimp="0.99 0.99 0.01" solref="0.01 1"/>
                 <site name="object0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 1" type="sphere"/>
+            </body>
+            """
+        elif self.task == YumiTask.PICK_AND_PLACE_OBJECT:
+            object_id = object_id or 'egg'
+            obj = dict(OBJECTS[object_id])
+            if 'mass' not in obj.keys():
+                obj['mass'] = 0.2
+            props = " ".join([f'{k}="{v}"' for k, v in obj.items()])
+            object_xml = f"""
+            <body name="object0" pos="0.025 0.025 0.025">
+                <joint name="object0:joint" type="free" damping="0.01"/>
+                <geom {props} condim="4" name="object0_base" material="block_mat" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <site name="object0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 1" type="sphere"/>
+            </body>
+
+            <body name="target0" pos="1 0.87 0.2">
+                <geom {props} name="target0" material="block_mat_target" contype="0" conaffinity="0"/>
+                <site name="target0:center" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
             </body>
             """
         else:
@@ -220,22 +248,22 @@ class YumiEnv(RobotEnv):
         if self._arm_l_joint_idx is not None:
             pos_low_l = np.r_[0.8, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
             pos_high_l = np.r_[1.4, 0.6, 0.4, 0.4, 0.3, 0.3, 0.3]
-            self.init_qpos[self._arm_l_joint_idx] = self.np_random.uniform(pos_low_l, pos_high_l)
-            self.init_qvel[self._arm_l_joint_idx] = 0.0
+            qpos[self._arm_l_joint_idx] = self.np_random.uniform(pos_low_l, pos_high_l)
+            qvel[self._arm_l_joint_idx] = 0.0
 
         if self._gripper_l_joint_idx is not None:
-            self.init_qpos[self._gripper_l_joint_idx] = 0.0
-            self.init_qvel[self._gripper_l_joint_idx] = 0.0
+            qpos[self._gripper_l_joint_idx] = 0.0
+            qvel[self._gripper_l_joint_idx] = 0.0
 
         if self._arm_r_joint_idx is not None:
             pos_low_r = np.r_[-1.4, -0.3, -0.4, -0.4, -0.3, -0.3, -0.3]
             pos_high_r = np.r_[-0.8,  0.6,  0.4,  0.4,  0.3,  0.3,  0.3]
-            self.init_qpos[self._arm_r_joint_idx] = self.np_random.uniform(pos_low_r, pos_high_r)
-            self.init_qvel[self._arm_r_joint_idx] = 0.0
+            qpos[self._arm_r_joint_idx] = self.np_random.uniform(pos_low_r, pos_high_r)
+            qvel[self._arm_r_joint_idx] = 0.0
 
         if self._gripper_r_joint_idx is not None:
-            self.init_qpos[self._gripper_r_joint_idx] = 0.0
-            self.init_qvel[self._gripper_r_joint_idx] = 0.0
+            qpos[self._gripper_r_joint_idx] = 0.0
+            qvel[self._gripper_r_joint_idx] = 0.0
 
         self.sim.data.ctrl[:] = 0.0
         self._set_sim_state(qpos, qvel)
@@ -333,6 +361,15 @@ class YumiEnv(RobotEnv):
             d_above_table = object_pose[2] - self._object_z_offset
             achieved_goal = np.r_[d_above_table]
 
+        elif self.task == YumiTask.PICK_AND_PLACE_OBJECT:
+            object_pose = np.zeros(7)
+            object_pose[:3] = self.sim.data.get_body_xpos('object0')
+            if not self.ignore_target_rotation:
+                object_pose[3:] = self.sim.data.get_body_xquat('object0')
+            achieved_goal = object_pose.copy()
+            object_velp = self.sim.data.get_site_xvelp('object0:center') * dt
+            object_velr = self.sim.data.get_site_xvelr('object0:center') * dt
+
         else:
             raise NotImplementedError
 
@@ -377,7 +414,7 @@ class YumiEnv(RobotEnv):
         return (d < self.distance_threshold).astype(np.float32)
 
     def _sample_goal(self):
-        if self.task == YumiTask.PICK_AND_PLACE_BAR:
+        if self.task == YumiTask.PICK_AND_PLACE_BAR or self.task == YumiTask.PICK_AND_PLACE_OBJECT:
             # Goal is object target position and quaternion
             new_goal = np.zeros(7)
             new_goal[:3] = self.np_random.uniform(*self._obj_target_bounds)
@@ -455,7 +492,7 @@ class YumiEnv(RobotEnv):
 
     def _step_callback(self):
         # Visualize target.
-        if self.task == YumiTask.PICK_AND_PLACE_BAR:
+        if self.task == YumiTask.PICK_AND_PLACE_BAR or self.task == YumiTask.PICK_AND_PLACE_OBJECT:
             bodies_offset = (self.sim.data.body_xpos - self.sim.model.body_pos).copy()
             body_id = self.sim.model.body_name2id('target0')
             self.sim.model.body_pos[body_id, :] = self.goal[:3] - bodies_offset[body_id]
