@@ -224,6 +224,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
 
     def reset(self):
         self._reset()
+        self.sim_env.goal = self._sample_goal().copy()
         self.sim.step()
         return self._get_obs()
 
@@ -233,11 +234,6 @@ class YumiConstrainedEnv(gym.GoalEnv):
     @property
     def goal(self):
         return self.sim_env.goal[:3]
-
-    @goal.setter
-    def goal(self, value):
-        assert value.shape == (3,)
-        self.sim_env.goal = np.r_[value, 0., 0., 0., 0.]
 
     def _sample_goal(self):
         new_goal = self.sim_env._sample_goal()
@@ -313,17 +309,20 @@ class YumiConstrainedEnv(gym.GoalEnv):
             max_rot_err = -np.inf
             max_pos_err = -np.inf
 
+            d_above_table = self.get_object_pos()[2] - self.sim_env._object_z_offset
+            grp_xrot = 0.9 + d_above_table * 2.0
+
             for arm_i, arm in enumerate(('l', 'r')):
 
                 curr_pose = self.get_gripper_pose(arm)
                 curr_q = self.get_arm_config(arm)
 
                 if arm == 'l':
-                    pitch = np.pi - 0.9
+                    pitch = np.pi - grp_xrot
                     u_masked = u[:7]
                     prev_err = prev_err_l
                 else:
-                    pitch = np.pi - 0.9
+                    pitch = np.pi - grp_xrot
                     u_masked = u[8:15]
                     prev_err = prev_err_r
 

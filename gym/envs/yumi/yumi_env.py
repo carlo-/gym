@@ -81,8 +81,8 @@ class YumiEnv(RobotEnv):
         self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
         self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
         self._target_bounds_r = (np.r_[-0.20, -0.43, 0.05], np.r_[0.35, -0.07, 0.6])
-        self._obj_target_bounds = (np.r_[-0.15, -0.15, 0.05], np.r_[0.15, 0.15, 0.25])
-        self._obj_init_bounds = (np.r_[-0.15, -0.15], np.r_[0.15, 0.15])
+        self._obj_target_bounds = (np.r_[-0.12, -0.12, 0.05], np.r_[0.12, 0.12, 0.25])
+        self._obj_init_bounds = (np.r_[-0.12, -0.12], np.r_[0.12, 0.12])
 
         if task == YumiTask.LIFT_ABOVE_TABLE:
             self._obj_init_bounds = (np.r_[-0.05, -0.05], np.r_[0.05, 0.05])

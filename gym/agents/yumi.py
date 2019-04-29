@@ -83,6 +83,62 @@ def _solve_qp_ik_pos(current_pose, target_pose, jac, joint_pos, joint_lims=None,
     return new_q
 
 
+class YumiConstrainedAgent(BaseAgent):
+
+    def __init__(self, env, **kwargs):
+        super(YumiConstrainedAgent, self).__init__(env, **kwargs)
+        from gym.envs.yumi.yumi_constrained import YumiConstrainedEnv
+        assert isinstance(env.unwrapped, YumiConstrainedEnv)
+
+        self._raw_env = env.unwrapped # type: YumiConstrainedEnv
+        self._goal = None
+        self._phase = 0
+        self._phase_steps = 0
+
+    def reset(self, new_goal=None):
+        self._goal = None
+        self._phase = 0
+        self._phase_steps = 0
+        if new_goal is not None:
+            self._goal = new_goal.copy()
+
+    def predict(self, obs, **kwargs):
+
+        u = np.zeros(self._env.action_space.shape)
+        new_goal = obs['desired_goal']
+        if self._goal is None or np.any(self._goal != new_goal):
+            self.reset(new_goal)
+
+        object_pos = obs['observation'][18:21]
+        object_rel_pos = obs['observation'][24:27]
+        c_points = self._raw_env.sim_env.get_object_contact_points()
+
+        if self._phase == 0:
+            if np.linalg.norm(object_rel_pos) > 0.01:
+                u[0] = 0.0
+                u[1:4] = object_rel_pos * 10.0
+            else:
+                self._phase += 1
+                self._phase_steps = 0
+
+        if self._phase == 1:
+            if len(c_points) < 3:
+                u[0] = -1.0
+                self._phase_steps += 1
+            else:
+                self._phase += 1
+                self._phase_steps = 0
+
+        if self._phase == 2:
+            if len(c_points) > 2:
+                u[0] = -1.0
+                u[1:4] = (new_goal - object_pos) * 5.0
+            else:
+                self._phase = 0
+                self._phase_steps = 0
+        return u
+
+
 class YumiLiftAgent(BaseAgent):
 
     def __init__(self, env, **kwargs):
