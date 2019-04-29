@@ -129,6 +129,16 @@ class YumiConstrainedEnv(gym.GoalEnv):
             and (-0.01 < obj_pose[2] < 0.45)
         )
 
+    def get_table_surface_pose(self):
+        pose = np.r_[
+            self.sim.data.get_body_xpos('table'),
+            self.sim.data.get_body_xquat('table'),
+        ]
+        geom = self.sim.model.geom_name2id('table')
+        size = self.sim.model.geom_size[geom].copy()
+        pose[2] += size[2]
+        return pose
+
     def _unpack_action(self, action):
         dist_between_grippers = action[0]
         grasp_center_pos_delta = action[1:4]

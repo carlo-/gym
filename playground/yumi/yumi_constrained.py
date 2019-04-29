@@ -4,6 +4,7 @@ import numpy as np
 
 import gym
 from gym.utils.mjviewer import add_selection_logger
+from gym.utils.transformations import render_pose
 from gym.agents.yumi import YumiConstrainedAgent
 
 
@@ -42,6 +43,8 @@ def main():
         # # u = env.action_space.sample()
 
         u = agent.predict(obs)
+
+        render_pose(env.unwrapped.get_table_surface_pose(), env.unwrapped.viewer, unique_id=535)
 
         obs, rew, done, _ = env.step(u)
         n_steps += 1

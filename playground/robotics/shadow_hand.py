@@ -6,6 +6,7 @@ from threading import Thread
 import numpy as np
 import gym
 from gym.utils.mjviewer import add_selection_logger
+from gym.utils.transformations import render_pose
 
 from playground.utils import wait_for_key
 from gym.agents.shadow_hand import HandPickAndPlaceAgent
@@ -238,6 +239,8 @@ def main():
                 action = selected_action.copy()
                 action[-7:] *= 0.2
                 selected_action[-7:] *= 0.0
+
+                render_pose(env.unwrapped.get_table_surface_pose(), env.unwrapped.viewer, unique_id=535)
 
                 rew, done = env.step(action)[1:3]
                 # print(rew)

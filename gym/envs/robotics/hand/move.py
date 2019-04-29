@@ -261,6 +261,16 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
         if pose.size == 7:
             self.sim.data.mocap_quat[0, :] = pose[3:]
 
+    def get_table_surface_pose(self):
+        pose = np.r_[
+            self.sim.data.get_body_xpos('table0'),
+            self.sim.data.get_body_xquat('table0'),
+        ]
+        geom = self.sim.model.geom_name2id('table0_geom')
+        size = self.sim.model.geom_size[geom].copy()
+        pose[2] += size[2]
+        return pose
+
     # GoalEnv methods
     # ----------------------------
 
