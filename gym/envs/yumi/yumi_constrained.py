@@ -5,6 +5,7 @@ import gym
 from gym import spaces
 from gym.envs.yumi.yumi_env import YumiEnv, YumiTask
 from gym.utils import transformations as tf
+from gym.envs.robotics.utils import reset_mocap2body_xpos
 
 
 def _goal_distance(goal_a, goal_b):
@@ -15,10 +16,20 @@ def _goal_distance(goal_a, goal_b):
     return d_pos
 
 
+def _mocap_set_action(sim, action):
+    # Originally from gym.envs.robotics.utils
+    if sim.model.nmocap > 0:
+        pos_delta = action[:, :3]
+        quat_delta = action[:, 3:]
+        reset_mocap2body_xpos(sim)
+        sim.data.mocap_pos[:] += pos_delta
+        sim.data.mocap_quat[:] += quat_delta
+
+
 class YumiConstrainedEnv(gym.GoalEnv):
 
     def __init__(self, *, reward_type='dense', rotation_ctrl=False, fingers_ctrl=False, distance_threshold=0.05,
-                 randomize_initial_object_pos=True):
+                 randomize_initial_object_pos=True, mocap_ctrl=False):
         super(YumiConstrainedEnv, self).__init__()
 
         self.metadata = {
@@ -29,6 +40,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
             arm='both', block_gripper=False, reward_type=reward_type, task=YumiTask.PICK_AND_PLACE_OBJECT,
             object_id='box', randomize_initial_object_pos=randomize_initial_object_pos
         )
+        self.mocap_ctrl = mocap_ctrl
         self.reward_type = reward_type
         self.distance_threshold = distance_threshold
         obs = self._get_obs()
@@ -212,11 +224,18 @@ class YumiConstrainedEnv(gym.GoalEnv):
         grasp_radius = np.linalg.norm(vec, ord=2) / 2.0
         assert np.allclose(grasp_radius, dist_between_grippers / 2.0)
 
-        max_pos_err = self._move_arms(
-            left_target=grippers_pos_targets[0], left_yaw=left_yaw,
-            right_target=grippers_pos_targets[1], right_yaw=right_yaw,
-            left_grp_config=l_fingers_ctrl, right_grp_config=r_fingers_ctrl, max_steps=5,
-        )
+        if self.mocap_ctrl:
+            self._move_arms_mocap(
+                left_target=grippers_pos_targets[0], left_yaw=left_yaw,
+                right_target=grippers_pos_targets[1], right_yaw=right_yaw,
+                left_grp_config=l_fingers_ctrl, right_grp_config=r_fingers_ctrl, max_steps=1,
+            )
+        else:
+            self._move_arms(
+                left_target=grippers_pos_targets[0], left_yaw=left_yaw,
+                right_target=grippers_pos_targets[1], right_yaw=right_yaw,
+                left_grp_config=l_fingers_ctrl, right_grp_config=r_fingers_ctrl, max_steps=5,
+            )
 
         obs = self._get_obs()
         done = False # self.is_object_unreachable()
@@ -389,3 +408,65 @@ class YumiConstrainedEnv(gym.GoalEnv):
             return stable_steps
 
         return max_pos_err
+
+    def _move_arms_mocap(self, *, left_target: np.ndarray, right_target: np.ndarray, left_yaw=0.0, right_yaw=0.0,
+                         pos_threshold=0.02, rot_threshold=0.1, k=0.5, max_steps=1,
+                         left_grp_config=-1.0, right_grp_config=-1.0):
+
+        targets = {'l': left_target, 'r': right_target}
+        yaws = {'l': left_yaw, 'r': right_yaw}
+        self.sim.model.eq_active[:] = 1
+
+        for i in range(max_steps):
+
+            grasp_center_pos = np.zeros(3)
+            max_rot_err = -np.inf
+            max_pos_err = -np.inf
+
+            d_above_table = self.get_object_pos()[2] - self.sim_env._object_z_offset
+            grp_xrot = 0.9 + d_above_table * 2.0
+
+            mocap_a = np.zeros((self.sim.model.nmocap, 7))
+
+            for arm_i, arm in enumerate(('l', 'r')):
+
+                curr_pose = self.get_gripper_pose(arm)
+                pitch = np.pi - grp_xrot
+
+                target_pos = targets[arm]
+                target_pose = np.r_[target_pos, tf.rotations.euler2quat(np.r_[0., 0., yaws[arm]])]
+                target_pose = tf.apply_tf(np.r_[0., 0., 0., tf.rotations.euler2quat(np.r_[pitch, 0., 0.])], target_pose)
+
+                grasp_center_pos += curr_pose[:3]
+                if max_steps > 1:
+                    max_pos_err = max(max_pos_err, np.abs(curr_pose[:3] - target_pose[:3]).max())
+                    max_rot_err = max(max_rot_err, tf.quat_angle_diff(curr_pose[3:], target_pose[3:]))
+
+                mocap_a[arm_i] = target_pose - curr_pose
+
+                if self.viewer is not None:
+                    tf.render_pose(target_pos.copy(), self.viewer, label=f"{arm}_p", unique_label=True)
+                    tf.render_pose(target_pose.copy(), self.viewer, label=f"{arm}_t", unique_label=True)
+                    tf.render_pose(curr_pose.copy(), self.viewer, label=f"{arm}", unique_label=True)
+
+            grasp_center_pos /= 2.0
+
+            # set config of grippers
+            u = np.zeros(self.sim_env.action_space.shape)
+            u[7] = left_grp_config
+            u[15] = right_grp_config
+            self.sim_env._set_action(u)
+
+            # set pose of grippers
+            _mocap_set_action(self.sim, mocap_a * k)
+
+            # take simulation step
+            self.sim.step()
+            self.sim_env._step_callback()
+
+            if self.viewer is not None:
+                tf.render_pose(grasp_center_pos, self.viewer, label="grasp_center", unique_id=5554)
+                self.render(keep_markers=True)
+
+            if max_pos_err < pos_threshold and max_rot_err < rot_threshold:
+                break

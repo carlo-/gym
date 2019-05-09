@@ -520,6 +520,13 @@ register(
     max_episode_steps=50,
 )
 
+register(
+    id='YumiConstrained-v2',
+    entry_point='gym.envs.yumi:YumiConstrainedEnv',
+    max_episode_steps=50,
+    kwargs=dict(mocap_ctrl=True)
+)
+
 # Atari
 # ----------------------------------------
 

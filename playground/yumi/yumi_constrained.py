@@ -6,11 +6,17 @@ import gym
 from gym.utils.mjviewer import add_selection_logger
 from gym.utils.transformations import render_pose
 from gym.agents.yumi import YumiConstrainedAgent
+from playground.utils import test_env_fps
+
+
+def test_fps(steps=10_000):
+    test_env_fps(gym.make('YumiConstrained-v2'), steps)
+    test_env_fps(gym.make('YumiConstrained-v1'), steps)
 
 
 def main():
 
-    env = gym.make('YumiConstrained-v1', reward_type='sparse')
+    env = gym.make('YumiConstrained-v2', reward_type='sparse')
     # raw_env = env.unwrapped
     # sim = raw_env.sim
     # env.render()
