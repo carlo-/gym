@@ -7,8 +7,8 @@
     </contact>
 
     <equality>
-        <weld active="false" body1="yumi_mocap_l" body2="gripper_l_center" solimp="0.9 0.95 0.001" solref="0.02 1"/>
-        <weld active="false" body1="yumi_mocap_r" body2="gripper_r_center" solimp="0.9 0.95 0.001" solref="0.02 1"/>
+        <weld active="false" body1="yumi_mocap_l" body2="gripper_l_center" solimp="0.9 0.95 0.001" solref="0.01 1"/>
+        <weld active="false" body1="yumi_mocap_r" body2="gripper_r_center" solimp="0.9 0.95 0.001" solref="0.01 1"/>
     </equality>
 
     <worldbody>

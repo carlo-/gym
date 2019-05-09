@@ -35,7 +35,7 @@ def main():
     unreachable_eps = 0
     tot_eps = 0
 
-    for _ in it.count():
+    for i in it.count():
         if done:
             obs = env.reset()
             n_steps = 0
@@ -46,7 +46,10 @@ def main():
         # err = achieved_goal - center_pos
         # # u = np.zeros(env.action_space.shape)
         # # u[1:4] = err * 10.0
-        # # u = env.action_space.sample()
+
+        u = env.action_space.sample()
+        u[0] = -1 if i // 8 % 2 == 0 else 1
+        u[1:] = 0.
 
         u = agent.predict(obs)
 

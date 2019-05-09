@@ -202,12 +202,19 @@ class YumiConstrainedEnv(gym.GoalEnv):
         (dist_between_grippers, grasp_center_pos_delta,
          grasp_center_quat_delta, l_fingers_ctrl, r_fingers_ctrl) = self._unpack_action(action)
 
-        dist_between_grippers = np.interp(dist_between_grippers, [-1, 1], [0.05, 0.30])
+        if self.mocap_ctrl:
+            pos_k = 0.1
+            dist_range = [0.05, 0.20]
+        else:
+            pos_k = 0.2
+            dist_range = [0.05, 0.30]
+
+        dist_between_grippers = np.interp(dist_between_grippers, [-1, 1], dist_range)
 
         curr_grasp_center_pose = self.get_grasp_center_pos() # TODO: Use pose rather than position only
         target_grasp_center_pose = np.r_[0., 0., 0., 1., 0., 0., 0.]
 
-        target_grasp_center_pose[:3] = curr_grasp_center_pose[:3] + grasp_center_pos_delta * 0.2
+        target_grasp_center_pose[:3] = curr_grasp_center_pose[:3] + grasp_center_pos_delta * pos_k
         if self.rotation_ctrl_enabled:
             # target_grasp_center_pose[3:] = curr_grasp_center_pose[3:] + grasp_center_quat_delta * 0.1
             raise NotImplementedError
@@ -410,7 +417,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
         return max_pos_err
 
     def _move_arms_mocap(self, *, left_target: np.ndarray, right_target: np.ndarray, left_yaw=0.0, right_yaw=0.0,
-                         pos_threshold=0.02, rot_threshold=0.1, k=0.5, max_steps=1,
+                         pos_threshold=0.02, rot_threshold=0.1, k=1.0, max_steps=1,
                          left_grp_config=-1.0, right_grp_config=-1.0):
 
         targets = {'l': left_target, 'r': right_target}
