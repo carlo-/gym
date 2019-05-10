@@ -16,7 +16,7 @@ def test_fps(steps=10_000):
 
 def main():
 
-    env = gym.make('YumiConstrained-v2', reward_type='sparse')
+    env = gym.make('YumiConstrained-v2', reward_type='sparse', render_poses=False)
     # raw_env = env.unwrapped
     # sim = raw_env.sim
     # env.render()

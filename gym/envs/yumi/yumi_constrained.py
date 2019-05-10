@@ -29,7 +29,7 @@ def _mocap_set_action(sim, action):
 class YumiConstrainedEnv(gym.GoalEnv):
 
     def __init__(self, *, reward_type='dense', rotation_ctrl=False, fingers_ctrl=False, distance_threshold=0.05,
-                 randomize_initial_object_pos=True, mocap_ctrl=False):
+                 randomize_initial_object_pos=True, mocap_ctrl=False, render_poses=True):
         super(YumiConstrainedEnv, self).__init__()
 
         self.metadata = {
@@ -43,6 +43,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
         self.mocap_ctrl = mocap_ctrl
         self.reward_type = reward_type
         self.distance_threshold = distance_threshold
+        self.render_poses = render_poses
         obs = self._get_obs()
 
         n_actions = 4 # dist between grippers (1) + grasp center pos delta (3)
@@ -378,7 +379,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
                 target_q = self.sim_env.mocap_ik(target_pose - curr_pose, arm)
                 u_masked[:] = self._controller(curr_q - target_q, prev_err, k)
 
-                if self.viewer is not None:
+                if self.viewer is not None and self.render_poses:
                     tf.render_pose(target_pos.copy(), self.viewer, label=f"{arm}_p", unique_label=True)
                     tf.render_pose(target_pose.copy(), self.viewer, label=f"{arm}_t", unique_label=True)
                     tf.render_pose(curr_pose.copy(), self.viewer, label=f"{arm}", unique_label=True)
@@ -394,7 +395,8 @@ class YumiConstrainedEnv(gym.GoalEnv):
             self.sim_env._step_callback()
 
             if self.viewer is not None:
-                tf.render_pose(grasp_center_pos, self.viewer, label="grasp_center", unique_id=5554)
+                if self.render_poses:
+                    tf.render_pose(grasp_center_pos, self.viewer, label="grasp_center", unique_id=5554)
                 self.render(keep_markers=True)
 
             if max_pos_err < pos_threshold and max_rot_err < rot_threshold:
@@ -451,7 +453,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
 
                 mocap_a[arm_i] = target_pose - curr_pose
 
-                if self.viewer is not None:
+                if self.viewer is not None and self.render_poses:
                     tf.render_pose(target_pos.copy(), self.viewer, label=f"{arm}_p", unique_label=True)
                     tf.render_pose(target_pose.copy(), self.viewer, label=f"{arm}_t", unique_label=True)
                     tf.render_pose(curr_pose.copy(), self.viewer, label=f"{arm}", unique_label=True)
@@ -472,7 +474,8 @@ class YumiConstrainedEnv(gym.GoalEnv):
             self.sim_env._step_callback()
 
             if self.viewer is not None:
-                tf.render_pose(grasp_center_pos, self.viewer, label="grasp_center", unique_id=5554)
+                if self.render_poses:
+                    tf.render_pose(grasp_center_pos, self.viewer, label="grasp_center", unique_id=5554)
                 self.render(keep_markers=True)
 
             if max_pos_err < pos_threshold and max_rot_err < rot_threshold:
