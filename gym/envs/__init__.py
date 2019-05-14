@@ -475,6 +475,14 @@ register(
     max_episode_steps=5,
 )
 
+# Special
+# ----------------------------------------
+
+register(
+    id='TwinAutoencoder-v0',
+    entry_point='gym.envs.special:TwinAutoencoderEnv',
+)
+
 # YuMi
 # ----------------------------------------
 
