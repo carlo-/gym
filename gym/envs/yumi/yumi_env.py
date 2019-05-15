@@ -43,6 +43,7 @@ OBJECTS = dict(
     box=dict(type='box', size='0.03 0.03 0.03'),
     sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
     small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
+    fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
 )
 
 

@@ -116,14 +116,14 @@ class YumiConstrainedAgent(BaseAgent):
         if self._phase == 0:
             if np.linalg.norm(object_rel_pos) > 0.01:
                 u[0] = 0.0
-                u[1:4] = object_rel_pos * 10.0
+                u[1:4] = object_rel_pos * 5.0
             else:
                 self._phase += 1
                 self._phase_steps = 0
 
         if self._phase == 1:
             if len(c_points) < 3:
-                u[0] = -1.0
+                u[0] = -self._phase_steps / 10.0
                 self._phase_steps += 1
             else:
                 self._phase += 1
@@ -132,7 +132,7 @@ class YumiConstrainedAgent(BaseAgent):
         if self._phase == 2:
             if len(c_points) > 2:
                 u[0] = -1.0
-                u[1:4] = (new_goal - object_pos) * 5.0
+                u[1:4] = (new_goal - object_pos) * 2.0
             else:
                 self._phase = 0
                 self._phase_steps = 0

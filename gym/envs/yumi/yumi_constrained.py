@@ -38,7 +38,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
 
         self.sim_env = YumiEnv(
             arm='both', block_gripper=False, reward_type=reward_type, task=YumiTask.PICK_AND_PLACE_OBJECT,
-            object_id='box', randomize_initial_object_pos=randomize_initial_object_pos
+            object_id='fetch_box', randomize_initial_object_pos=randomize_initial_object_pos
         )
         self.mocap_ctrl = mocap_ctrl
         self.reward_type = reward_type
