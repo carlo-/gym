@@ -8,7 +8,7 @@ class TwinAutoencoderEnv(gym.Env):
 
     def __init__(self, *, teacher_agent: BaseAgent, teacher_env: gym.Env, student_env: gym.Env, twin_ae_model,
                  student_is_a_env=True, student_obs_transform=None, teacher_obs_transform=None, sync_goals=None,
-                 task_rew_weight=1.0, imitation_rew_weight=1.0):
+                 task_rew_weight=1.0, imitation_rew_weight=1.0, reset_when_done=True):
 
         self.metadata = {
             'render.modes': ['human', 'rgb_array'],
@@ -23,6 +23,7 @@ class TwinAutoencoderEnv(gym.Env):
         self.twin_ae_model = twin_ae_model
         self.task_rew_weight = task_rew_weight
         self.imitation_rew_weight = imitation_rew_weight
+        self.reset_when_done = reset_when_done
 
         self._student_is_a_env = student_is_a_env
         self._student_obs_transform = student_obs_transform
@@ -100,10 +101,11 @@ class TwinAutoencoderEnv(gym.Env):
             self._teacher_env_ep_steps += 1
             self._teacher_last_obs = t_obs
 
-        if s_done or self._student_env_ep_steps >= self._student_env_ep_len:
+        done = s_done or self._student_env_ep_steps >= self._student_env_ep_len
+        if done and self.reset_when_done:
             _ = self.reset()
 
-        return s_obs, tot_reward, s_done, s_info
+        return s_obs, tot_reward, done, s_info
 
     def render(self, **kwargs):
         s_res = self.student_env.render(**kwargs)
