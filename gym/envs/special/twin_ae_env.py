@@ -107,7 +107,7 @@ class TwinAutoencoderEnv(gym.Env):
 
         return s_obs, tot_reward, done, s_info
 
-    def render(self, **kwargs):
+    def render(self, *args, **kwargs):
         s_res = self.student_env.render(**kwargs)
         t_res = self.teacher_env.render(**kwargs)
         return s_res, t_res
