@@ -8,7 +8,7 @@ class TwinAutoencoderEnv(gym.Env):
 
     def __init__(self, *, teacher_agent: BaseAgent, teacher_env: gym.Env, student_env: gym.Env, twin_ae_model,
                  student_is_a_env=True, student_obs_transform=None, teacher_obs_transform=None, sync_goals=None,
-                 task_rew_weight=1.0, imitation_rew_weight=1.0, reset_when_done=True):
+                 task_rew_weight=1.0, imitation_rew_weight=1.0, reset_when_done=True, rew_weight_update_rule=None):
 
         self.metadata = {
             'render.modes': ['human', 'rgb_array'],
@@ -32,6 +32,9 @@ class TwinAutoencoderEnv(gym.Env):
 
         self._teacher_env_ep_len = teacher_env.spec.timestep_limit
         self._student_env_ep_len = student_env.spec.timestep_limit
+
+        self._steps_since_init = 0
+        self.rew_weight_update_rule = rew_weight_update_rule
 
         self._teacher_env_ep_steps = 0
         self._student_env_ep_steps = 0
@@ -82,6 +85,16 @@ class TwinAutoencoderEnv(gym.Env):
         return s_obs
 
     def step(self, action):
+
+        self._steps_since_init += 1
+        if callable(self.rew_weight_update_rule):
+            im_w, task_w = self.rew_weight_update_rule(
+                steps_since_init=self._steps_since_init,
+                imitation_rew_weight=self.imitation_rew_weight,
+                task_rew_weight=self.task_rew_weight,
+            )
+            self.imitation_rew_weight = im_w
+            self.task_rew_weight = task_w
 
         s_obs, s_rew, s_done, s_info = self.student_env.step(action)
         self._student_env_ep_steps += 1
@@ -186,6 +199,9 @@ def _test_env():
         student_obs_transform=_student_obs_transformer,
         teacher_obs_transform=_teacher_obs_transformer,
         sync_goals=_sync_goals,
+        task_rew_weight=1.0,
+        imitation_rew_weight=50.0,
+        rew_weight_update_rule=lambda steps_since_init, **others: (50.0 - steps_since_init / 100, 1.0 + steps_since_init / 100),
     )
 
     env = gym.make('TwinAutoencoder-v0', **kwargs)
@@ -202,7 +218,7 @@ def _test_env():
         action = student_agent.predict(obs)
         obs, rew, done, info = env.step(action)
         env.render()
-        print(rew)
+        print(env.unwrapped.imitation_rew_weight, env.unwrapped.task_rew_weight)
 
 
 if __name__ == '__main__':
