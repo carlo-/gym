@@ -2,6 +2,7 @@ import copy
 
 import numpy as np
 
+import gym
 from gym.envs.yumi.yumi_env import YumiEnv
 from gym.envs.robotics import rotations
 from gym.agents.base import BaseAgent
@@ -81,6 +82,91 @@ def _solve_qp_ik_pos(current_pose, target_pose, jac, joint_pos, joint_lims=None,
         qvel *= 0.1
     new_q = joint_pos + qvel
     return new_q
+
+
+class YumiImitatorAgent(BaseAgent):
+
+    def __init__(self, env, *, teacher_env, teacher_agent: BaseAgent, a_scaler, b_scaler, model,
+                 teacher_obj_name='object0', t_table_tf=None, **kwargs):
+        super(YumiImitatorAgent, self).__init__(env, **kwargs)
+        self._goal = None
+        self._prev_s_u = None
+        self.model = model
+        self.teacher_env = teacher_env
+        self.teacher_agent = teacher_agent
+        self.teacher_obj_name = teacher_obj_name
+        self.a_scaler = copy.deepcopy(a_scaler)
+        self.b_scaler = copy.deepcopy(b_scaler)
+        self.yumi_env_version = 2
+        self.s_table_tf = env.unwrapped.get_table_surface_pose()
+        if t_table_tf is None:
+            self.t_table_tf = gym.make('HandPickAndPlace-v0').unwrapped.get_table_surface_pose()
+        else:
+            self.t_table_tf = t_table_tf.copy()
+
+    @staticmethod
+    def _flatten_obs(obs_dict):
+        return np.r_[obs_dict['observation'], obs_dict['desired_goal']]
+
+    def _controller(self, s_obs, t_obs):
+        u = np.zeros(self._env.action_space.shape)
+        pos_err = t_obs[:3] - s_obs[:3]
+        t_g_dist = np.linalg.norm(t_obs[6:9] - t_obs[9:12], ord=2)
+        if self.yumi_env_version == 2:
+            pos_k = 10.0
+            grasp_k = 1.0
+            grasp_range = [0.05, 0.20]
+        else:
+            pos_k = 5.0
+            grasp_k = 1.2
+            grasp_range = [0.05, 0.30]
+        u[1:4] = pos_err * pos_k
+        u[0] = np.interp(t_g_dist, grasp_range, [-1, 1]) * grasp_k
+        return np.clip(u, -1, 1)
+
+    def _align_goal(self):
+
+        tf_to_goal = tf.get_tf(np.r_[self._goal, 1., 0., 0., 0.], self.s_table_tf)
+        t_goal_pose = tf.apply_tf(tf_to_goal, self.t_table_tf)
+
+        self.teacher_env.unwrapped.goal[:3] = t_goal_pose[:3]
+
+        tf_to_obj = tf.get_tf(self._env.unwrapped.get_object_pose(), self.s_table_tf)
+        t_obj_pose = tf.apply_tf(tf_to_obj, self.t_table_tf)
+
+        joint_name = self.teacher_obj_name + ":joint"
+        object_pos = self.teacher_env.unwrapped.sim.data.get_joint_qpos(joint_name).copy()
+        object_pos[:2] = t_obj_pose[:2]
+        self.teacher_env.unwrapped.sim.data.set_joint_qpos(joint_name, object_pos)
+        self.teacher_env.unwrapped.sim.forward()
+
+        self.teacher_agent.reset()
+
+    def reset(self, **kwargs):
+        self._goal = None
+        self._prev_s_u = None
+        self.teacher_agent.reset()
+        self.teacher_env.reset()
+
+    def predict(self, obs, **kwargs):
+
+        goal = obs['desired_goal']
+        if self._goal is None or np.any(goal != self._goal):
+            self.reset()
+            self._goal = goal.copy()
+            self._align_goal()
+
+        t_obs = self.teacher_env.unwrapped._get_obs()
+        t_u = self.teacher_agent.predict(t_obs)
+        t_obs, _, done, _ = self.teacher_env.step(t_u)
+
+        b_obs = self.b_scaler.transform(self._flatten_obs(t_obs)[None], copy=True)[0]
+        recon_t_obs = self.model.cross_decode_b_to_a(b_obs)
+        recon_t_obs = self.a_scaler.inverse_transform(recon_t_obs[None], copy=True)[0]
+
+        s_u = self._controller(obs['observation'], recon_t_obs)
+        self._prev_s_u = s_u.copy()
+        return s_u
 
 
 class YumiConstrainedAgent(BaseAgent):

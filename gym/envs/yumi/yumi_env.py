@@ -57,7 +57,8 @@ class YumiTask(Enum):
 class YumiEnv(RobotEnv):
 
     def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
-                 ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None):
+                 ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None, object_on_table=False,
+                 has_rotating_platform=False):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -74,6 +75,7 @@ class YumiEnv(RobotEnv):
             if arm != 'both':
                 raise NotImplementedError
 
+        self.object_on_table = object_on_table
         self.block_gripper = block_gripper
         self.distance_threshold = distance_threshold
         self.ignore_target_rotation = ignore_target_rotation
@@ -420,6 +422,8 @@ class YumiEnv(RobotEnv):
             new_goal = np.zeros(7)
             new_goal[:3] = self.np_random.uniform(*self._obj_target_bounds)
             # TODO: Randomize rotation
+            if self.object_on_table:
+                new_goal[2] = 0.025
         elif self.task == YumiTask.REACH:
             # Goal is gripper(s) target position(s)
             new_goal = np.zeros(6)
