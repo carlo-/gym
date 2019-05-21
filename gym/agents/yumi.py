@@ -131,7 +131,7 @@ class YumiImitatorAgent(BaseAgent):
 
         self.teacher_env.unwrapped.goal[:3] = t_goal_pose[:3]
 
-        if not self._env.unwrapped.has_rotating_platform:
+        if not self._env.unwrapped.sim_env.has_rotating_platform:
             tf_to_obj = tf.get_tf(self._env.unwrapped.get_object_pose(), self.s_table_tf)
             t_obj_pose = tf.apply_tf(tf_to_obj, self.t_table_tf)
 
