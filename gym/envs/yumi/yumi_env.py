@@ -80,6 +80,7 @@ class YumiEnv(RobotEnv):
         self.distance_threshold = distance_threshold
         self.ignore_target_rotation = ignore_target_rotation
         self.randomize_initial_object_pos = randomize_initial_object_pos
+        self.has_rotating_platform = has_rotating_platform
 
         self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
         self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
@@ -151,9 +152,27 @@ class YumiEnv(RobotEnv):
         else:
             object_xml = ""
 
+        rot_platform_xml = ""
+        if has_rotating_platform:
+            rot_platform_xml = """
+            <body name="rotating_platform" pos="0.1 -0.2 0.02">
+                <inertial pos="0 0 0" mass="2" diaginertia="0.1 0.1 0.1" />
+                <joint type="hinge" name="rotating_platform_joint" damping="0.8" axis="0 0 1" limited="false"/>
+                <geom pos="0 0 0" rgba="0 0.5 0 1" size="0.3 0.05 0.01" type="box" friction="1 0.95 0.01"/>
+                
+                <geom pos="0.29 0 0.02" rgba="0.5 0 0 1" size="0.01 0.05 0.005" type="box" friction="1 0.95 0.01"/>
+                <geom pos="0.24 0.04 0.02" rgba="1 0 0 1" size="0.05 0.01 0.005" type="box" friction="1 0.95 0.01"/>
+                <geom pos="0.24 -0.04 0.02" rgba="0 0 1 1" size="0.05 0.01 0.005" type="box" friction="1 0.95 0.01"/>
+                
+                <site name="rotating_platform:far_end" pos="0.25 0 0"
+                      size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
+            </body>
+            """
+
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
+        xml_format = dict(object=object_xml, rotating_platform=rot_platform_xml)
         super(YumiEnv, self).__init__(model_path=model_path, n_substeps=5,
-                                      n_actions=n_actions, initial_qpos=None, xml_format=dict(object=object_xml))
+                                      n_actions=n_actions, initial_qpos=None, xml_format=xml_format)
 
     @property
     def has_object(self):
@@ -283,10 +302,14 @@ class YumiEnv(RobotEnv):
             if gripper_z < 0.043:
                 return False
 
-        # Randomize initial position of object.
-        if self.has_object and self.randomize_initial_object_pos:
+        if self.has_object:
             object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
-            object_qpos[:2] = self.np_random.uniform(*self._obj_init_bounds)
+            if self.has_rotating_platform:
+                object_qpos[2] += 0.020
+                object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
+            elif self.randomize_initial_object_pos:
+                # Randomize initial position of object.
+                object_qpos[:2] = self.np_random.uniform(*self._obj_init_bounds)
             self.sim.data.set_joint_qpos('object0:joint', object_qpos)
 
         return True

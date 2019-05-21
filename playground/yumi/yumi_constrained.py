@@ -16,7 +16,8 @@ def test_fps(steps=10_000):
 
 def main():
 
-    env = gym.make('YumiConstrained-v2', reward_type='sparse', render_poses=False)
+    env = gym.make('YumiConstrained-v2', reward_type='sparse', render_poses=False,
+                   has_rotating_platform=True)
     # raw_env = env.unwrapped
     # sim = raw_env.sim
     # env.render()
@@ -56,6 +57,7 @@ def main():
         render_pose(env.unwrapped.get_table_surface_pose(), env.unwrapped.viewer, unique_id=535)
 
         obs, rew, done, _ = env.step(u)
+        done = False
         n_steps += 1
         env.render()
 

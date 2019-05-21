@@ -28,7 +28,7 @@ class FetchPickAndPlaceEnv(fetch_env.FetchEnv, utils.EzPickle):
             block_gripper=False, n_substeps=20,
             gripper_extra_height=0.2, target_in_the_air=True, target_offset=0.0,
             obj_range=(0.1, 0.15), target_range=0.15, distance_threshold=0.05,
-            initial_qpos=initial_qpos, reward_type='sparse'
+            initial_qpos=initial_qpos, reward_type='sparse', has_rotating_platform=False,
         )
 
         merged = {**default_kwargs, **kwargs}

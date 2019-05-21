@@ -2,13 +2,13 @@ import numpy as np
 
 import gym
 from gym.agents.base import BaseAgent
-
+from gym.utils import transformations as tf
 
 class FetchPickAndPlaceAgent(BaseAgent):
 
     def __init__(self, env, **kwargs):
         super(FetchPickAndPlaceAgent, self).__init__(env, **kwargs)
-        self._phase = 0
+        self._phase = -1
         self._goal = None
 
     def predict(self, obs, **kwargs):
@@ -19,15 +19,76 @@ class FetchPickAndPlaceAgent(BaseAgent):
         goal = obs['desired_goal']
         if self._goal is None or np.any(goal != self._goal):
             self._goal = goal.copy()
-            self._phase = 0
+            self._phase = -1
 
+        grasp_center_pos = obs['observation'][:3]
         object_pos = obs['observation'][3:6]
         object_rel_pos = obs['observation'][6:9]
 
         object_oriented_goal = object_rel_pos.copy()
         object_oriented_goal[2] += 0.03 # first make the gripper go slightly above the object
 
-        if np.linalg.norm(object_oriented_goal) >= 0.005 and self._phase == 0:
+        raw_env = self._env.unwrapped
+        table_tf = raw_env.get_table_surface_pose()
+
+        print('HERE', np.linalg.norm(object_pos[:2] - table_tf[:2]))
+
+        if raw_env.has_rotating_platform:
+
+            if np.linalg.norm(object_pos[:2] - table_tf[:2]) > 0.22: # FIXME
+                far_end_pose = np.r_[
+                    raw_env.sim.data.get_site_xpos('rotating_platform:far_end'),
+                    tf.rotations.mat2quat(raw_env.sim.data.get_site_xmat('rotating_platform:far_end')),
+                ]
+
+                close_end_pose = tf.apply_tf(np.r_[-0.5, -0.09, 0., 1., 0., 0., 0.], far_end_pose)
+                tf.render_pose(close_end_pose, raw_env.viewer, label="close_end")
+
+                # push_target = np.r_[0.2, 0.2, 0., 1., 0., 0., 0.]
+                # push_target = tf.apply_tf(table_tf, push_target)
+                push_target = tf.apply_tf(np.r_[0., 0.1, 0., 1., 0., 0., 0.], close_end_pose)
+                tf.render_pose(push_target, raw_env.viewer)
+
+                if self._phase == -1:
+                    close_end_pose[2] += 0.05
+
+                err = close_end_pose[:3] - grasp_center_pos
+                u = np.zeros(4)
+
+                if self._phase < 1:
+                    if np.linalg.norm(err) > 0.015:
+                        u[3] = -1.
+                        u[:3] = err * 20.0
+                    else:
+                        self._phase += 1
+                        self._phase_steps = 0
+
+                if self._phase == 1:
+                    u[3] = -1.
+                    u[:3] = (push_target[:3] - grasp_center_pos) * 10
+                    self._phase_steps += 1
+                    if self._phase_steps > 80:
+                        self._phase += 1
+                        self._phase_steps = 0
+
+                return u
+
+            elif self._phase < 2:
+                self._phase = 2
+                self._phase_steps = 0
+
+        elif self._phase < 2:
+            self._phase = 2
+            self._phase_steps = 0
+
+        if np.abs(table_tf[2] - grasp_center_pos[2]) < 0.07 and self._phase == 2:
+            action = [0, 0, 0.4, 0.05]
+            return action
+        elif self._phase == 2:
+            self._phase = 3
+            self._phase_steps = 0
+
+        if np.linalg.norm(object_oriented_goal) >= 0.005 and self._phase == 3:
             action = [0, 0, 0, 0]
             object_oriented_goal = object_rel_pos.copy()
             object_oriented_goal[2] += 0.03
@@ -35,30 +96,33 @@ class FetchPickAndPlaceAgent(BaseAgent):
                 action[i] = object_oriented_goal[i]*6
             action[len(action)-1] = 0.05
             return action
-        elif self._phase == 0:
-            self._phase = 1
+        elif self._phase == 3:
+            self._phase = 4
+            self._phase_steps = 0
 
-        if np.linalg.norm(object_rel_pos) >= 0.005 and self._phase == 1:
+        if np.linalg.norm(object_rel_pos) >= 0.005 and self._phase == 4:
             action = [0, 0, 0, 0]
             for i in range(len(object_rel_pos)):
                 action[i] = object_rel_pos[i]*6
-            action[len(action)-1] = -0.005
+            action[len(action)-1] = -0.2
             return action
-        elif self._phase == 1:
-            self._phase = 2
+        elif self._phase == 4:
+            self._phase = 5
+            self._phase_steps = 0
 
-        if np.linalg.norm(goal - object_pos) >= 0.01 and self._phase == 2:
+        if np.linalg.norm(goal - object_pos) >= 0.01 and self._phase == 5:
             action = [0, 0, 0, 0]
             for i in range(len(goal - object_pos)):
                 action[i] = (goal - object_pos)[i]*6
-            action[len(action)-1] = -0.005
+            action[len(action)-1] = -0.2
             return action
-        elif self._phase == 2:
-            self._phase = 3
+        elif self._phase == 5:
+            self._phase = 6
+            self._phase_steps = 0
 
-        if self._phase == 3:
+        if self._phase == 6:
             action = [0, 0, 0, 0]
-            action[len(action)-1] = -0.005 # keep the gripper closed
+            action[len(action)-1] = -0.2 # keep the gripper closed
             return action
 
 

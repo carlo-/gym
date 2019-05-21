@@ -195,11 +195,52 @@ class YumiConstrainedAgent(BaseAgent):
         if self._goal is None or np.any(self._goal != new_goal):
             self.reset(new_goal)
 
+        grasp_center_pos = obs['observation'][:3]
         object_pos = obs['observation'][18:21]
         object_rel_pos = obs['observation'][24:27]
         c_points = self._raw_env.sim_env.get_object_contact_points()
 
-        if self._phase == 0:
+        if self._raw_env.sim_env.has_rotating_platform:
+
+            if np.linalg.norm(object_pos[:2]) > 0.12: # FIXME
+                far_end_pose = np.r_[
+                    self._raw_env.sim.data.get_site_xpos('rotating_platform:far_end'),
+                    tf.rotations.mat2quat(self._raw_env.sim.data.get_site_xmat('rotating_platform:far_end')),
+                ]
+
+                close_end_pose = tf.apply_tf(np.r_[-0.5, -0.02, 0., 1., 0., 0., 0.], far_end_pose)
+                tf.render_pose(close_end_pose, self._raw_env.viewer)
+
+                push_target = np.r_[0.2, 0.2, 0., 1., 0., 0., 0.]
+                # push_target = tf.apply_tf(np.r_[0., 0.1, 0., 1., 0., 0., 0.], close_end_pose)
+                tf.render_pose(push_target, self._raw_env.viewer)
+                err = close_end_pose[:3] - grasp_center_pos
+
+                if self._phase == 0:
+                    if np.linalg.norm(err) > 0.01:
+                        u[0] = 1.
+                        u[1:4] = err * 5.0
+                    else:
+                        self._phase += 1
+                        self._phase_steps = 0
+
+                if self._phase == 1:
+                    u[0] = 1.
+                    u[1:4] = (push_target[:3] - grasp_center_pos) * 0.5
+                    self._phase_steps += 1
+                    if self._phase_steps > 80:
+                        self._phase += 1
+                        self._phase_steps = 0
+
+            elif self._phase < 2:
+                self._phase = 2
+                self._phase_steps = 0
+
+        elif self._phase < 2:
+            self._phase = 2
+            self._phase_steps = 0
+
+        if self._phase == 2:
             if np.linalg.norm(object_rel_pos) > 0.01:
                 u[0] = 0.0
                 u[1:4] = object_rel_pos * 5.0
@@ -207,7 +248,7 @@ class YumiConstrainedAgent(BaseAgent):
                 self._phase += 1
                 self._phase_steps = 0
 
-        if self._phase == 1:
+        if self._phase == 3:
             if len(c_points) < 3:
                 u[0] = -self._phase_steps / 10.0
                 self._phase_steps += 1
@@ -215,7 +256,7 @@ class YumiConstrainedAgent(BaseAgent):
                 self._phase += 1
                 self._phase_steps = 0
 
-        if self._phase == 2:
+        if self._phase == 4:
             if len(c_points) > 2:
                 u[0] = -1.0
                 u[1:4] = (new_goal - object_pos) * 2.0

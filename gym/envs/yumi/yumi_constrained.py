@@ -38,8 +38,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
 
         self.sim_env = YumiEnv(
             arm='both', block_gripper=False, reward_type=reward_type, task=YumiTask.PICK_AND_PLACE_OBJECT,
-            object_id='fetch_box', randomize_initial_object_pos=randomize_initial_object_pos,
-            has_rotating_platform=True, **kwargs,
+            object_id='fetch_box', randomize_initial_object_pos=randomize_initial_object_pos, **kwargs,
         )
         self.mocap_ctrl = mocap_ctrl
         self.reward_type = reward_type
@@ -181,15 +180,22 @@ class YumiConstrainedEnv(gym.GoalEnv):
             0.0196, 0.841, 1.0012, -0.9585, -0.0, 0.0001, 0.025, 0.025, 0.03, 1.0, -0.0, 0.0, 0.0
         ]
 
+        if self.sim_env.has_rotating_platform:
+            qpos = np.r_[-0.75, qpos]
+
         qvel = np.zeros_like(self.sim_env.init_qvel)
 
         self.sim.data.ctrl[:] = 0.0
         self.sim_env._set_sim_state(qpos, qvel)
 
-        if self.sim_env.randomize_initial_object_pos:
-            object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+        object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+        if self.sim_env.has_rotating_platform:
+            object_qpos[2] += 0.020
+            object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
+        elif self.sim_env.randomize_initial_object_pos:
+            # Randomize initial position of object.
             object_qpos[:2] = self.np_random.uniform(*self.sim_env._obj_init_bounds)
-            self.sim.data.set_joint_qpos('object0:joint', object_qpos)
+        self.sim.data.set_joint_qpos('object0:joint', object_qpos)
 
     # Env methods
     # ----------------------------

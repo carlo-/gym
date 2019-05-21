@@ -1,3 +1,4 @@
+import copy
 from typing import Sequence
 
 import mujoco_py
@@ -25,7 +26,8 @@ class FetchEnv(robot_env.RobotEnv):
     def __init__(
         self, model_path, n_substeps, gripper_extra_height, block_gripper,
         has_object, target_in_the_air, target_offset, obj_range, target_range,
-        distance_threshold, initial_qpos, reward_type, reward_params=None, explicit_goal_distance=False
+        distance_threshold, initial_qpos, reward_type, reward_params=None, explicit_goal_distance=False,
+        has_rotating_platform=False,
     ):
         """Initializes a new Fetch environment.
 
@@ -55,6 +57,7 @@ class FetchEnv(robot_env.RobotEnv):
         self.reward_type = reward_type
         self.reward_params = reward_params
         self.explicit_goal_distance = explicit_goal_distance
+        self.has_rotating_platform = has_rotating_platform
 
         if isinstance(obj_range, Sequence):
             assert len(obj_range) == 2, obj_range[0] <= obj_range[1]
@@ -65,9 +68,39 @@ class FetchEnv(robot_env.RobotEnv):
         else:
             raise ValueError
 
+        xml_format = None
+        if 'pick_and_place.xml' in model_path:
+            xml_format = dict(rotating_platform="")
+            if has_rotating_platform:
+                initial_qpos['rotating_platform_joint'] = -0.75
+                xml_format['rotating_platform'] = """
+                <body name="rotating_platform" pos="0.1 -0.2 0.21">
+                    <inertial pos="0 0 0" mass="2" diaginertia="0.1 0.1 0.1" />
+                    <joint type="hinge" name="rotating_platform_joint" damping="0.8" axis="0 0 1" limited="false"/>
+                    <geom pos="0 0 0" rgba="0 0.5 0 1" size="0.3 0.05 0.01" type="box" friction="1 0.95 0.01"/>
+                    
+                    <geom pos="0.295 0 0.01" rgba="0.5 0 0 1" size="0.0075 0.05 0.009" type="box" friction="1 0.95 0.01"/>
+                    <geom pos="0.24 0.045 0.01" rgba="1 0 0 1" size="0.05 0.0075 0.009" type="box" friction="1 0.95 0.01"/>
+                    <geom pos="0.24 -0.045 0.01" rgba="0 0 1 1" size="0.05 0.0075 0.009" type="box" friction="1 0.95 0.01"/>
+                    
+                    <site name="rotating_platform:far_end" pos="0.25 0 0"
+                          size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
+                </body>
+                """
+
         super(FetchEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
-            initial_qpos=initial_qpos)
+            initial_qpos=initial_qpos, xml_format=xml_format)
+
+    def get_table_surface_pose(self):
+        pose = np.r_[
+            self.sim.data.get_body_xpos('table0'),
+            self.sim.data.get_body_xquat('table0'),
+        ]
+        geom = self.sim.model.geom_name2id('table0_geom')
+        size = self.sim.model.geom_size[geom].copy()
+        pose[2] += size[2]
+        return pose
 
     def get_object_contact_points(self, other_body='robot0:'):
         if not self.has_object:
@@ -269,7 +302,8 @@ class FetchEnv(robot_env.RobotEnv):
         self.sim.forward()
 
     def _reset_sim(self):
-        self.sim.set_state(self.initial_state)
+        self.sim.set_state(copy.deepcopy(self.initial_state))
+        self.sim.forward()
 
         # Randomize start position of object.
         if self.has_object:
@@ -280,9 +314,14 @@ class FetchEnv(robot_env.RobotEnv):
             while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < range_min:
                 object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(-range_max, range_max, size=2)
 
-            object_qpos = self.sim.data.get_joint_qpos('object0:joint')
-            assert object_qpos.shape == (7,)
-            object_qpos[:2] = object_xpos
+            object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+
+            if self.has_rotating_platform:
+                object_qpos[2] += 0.020
+                object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
+            else:
+                object_qpos[:2] = object_xpos
+
             self.sim.data.set_joint_qpos('object0:joint', object_qpos)
 
         self.sim.forward()
