@@ -100,7 +100,7 @@ class YumiImitatorAgent(BaseAgent):
         self.yumi_env_version = 2
         self.s_table_tf = env.unwrapped.get_table_surface_pose()
         if t_table_tf is None:
-            self.t_table_tf = gym.make('HandPickAndPlace-v0').unwrapped.get_table_surface_pose()
+            self.t_table_tf = teacher_env.unwrapped.get_table_surface_pose()
         else:
             self.t_table_tf = t_table_tf.copy()
 
@@ -131,14 +131,15 @@ class YumiImitatorAgent(BaseAgent):
 
         self.teacher_env.unwrapped.goal[:3] = t_goal_pose[:3]
 
-        tf_to_obj = tf.get_tf(self._env.unwrapped.get_object_pose(), self.s_table_tf)
-        t_obj_pose = tf.apply_tf(tf_to_obj, self.t_table_tf)
+        if not self._env.unwrapped.has_rotating_platform:
+            tf_to_obj = tf.get_tf(self._env.unwrapped.get_object_pose(), self.s_table_tf)
+            t_obj_pose = tf.apply_tf(tf_to_obj, self.t_table_tf)
 
-        joint_name = self.teacher_obj_name + ":joint"
-        object_pos = self.teacher_env.unwrapped.sim.data.get_joint_qpos(joint_name).copy()
-        object_pos[:2] = t_obj_pose[:2]
-        self.teacher_env.unwrapped.sim.data.set_joint_qpos(joint_name, object_pos)
-        self.teacher_env.unwrapped.sim.forward()
+            joint_name = self.teacher_obj_name + ":joint"
+            object_pos = self.teacher_env.unwrapped.sim.data.get_joint_qpos(joint_name).copy()
+            object_pos[:2] = t_obj_pose[:2]
+            self.teacher_env.unwrapped.sim.data.set_joint_qpos(joint_name, object_pos)
+            self.teacher_env.unwrapped.sim.forward()
 
         self.teacher_agent.reset()
 
