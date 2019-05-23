@@ -202,7 +202,7 @@ class FetchEnv(robot_env.RobotEnv):
     def _reset_button(self):
         if self.has_button:
             self._button_pressed = False
-            self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (-0.25, 0.0, 0.21)
+            self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (0.13, 0.0, 0.21)
 
     # GoalEnv methods
     # ----------------------------
