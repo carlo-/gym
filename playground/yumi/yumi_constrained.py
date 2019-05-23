@@ -17,11 +17,11 @@ def test_fps(steps=10_000):
 def main():
 
     env = gym.make('YumiConstrained-v2', reward_type='sparse', render_poses=False,
-                   has_rotating_platform=True)
-    # raw_env = env.unwrapped
-    # sim = raw_env.sim
-    # env.render()
-    # add_selection_logger(raw_env.viewer, sim)
+                   has_rotating_platform=False, has_button=True)
+    raw_env = env.unwrapped
+    sim = raw_env.sim
+    env.render()
+    add_selection_logger(raw_env.viewer, sim)
 
     agent = YumiConstrainedAgent(env)
 
@@ -57,23 +57,23 @@ def main():
         render_pose(env.unwrapped.get_table_surface_pose(), env.unwrapped.viewer, unique_id=535)
 
         obs, rew, done, _ = env.step(u)
-        done = False
+        # done = False
         n_steps += 1
         env.render()
 
         if rew == 0.0:
             steps_to_success.append(n_steps)
             arr = np.asarray(steps_to_success)
-            print('min', arr.min(), 'max', arr.max(), 'avg', arr.mean(), 'std', arr.std())
+            # print('min', arr.min(), 'max', arr.max(), 'avg', arr.mean(), 'std', arr.std())
             done = True
 
             goal = obs['desired_goal'].copy()
             reachability[0] = np.minimum(reachability[0], goal)
             reachability[1] = np.maximum(reachability[1], goal)
 
-            print(reachability)
-            print(unreachable_eps / tot_eps)
-            print()
+            # print(reachability)
+            # print(unreachable_eps / tot_eps)
+            # print()
 
         elif done:
             unreachable_eps += 1

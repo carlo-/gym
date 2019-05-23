@@ -4,6 +4,7 @@ from typing import Sequence
 import mujoco_py
 import numpy as np
 
+from gym.utils import transformations as tf
 from gym.envs.robotics import rotations, robot_env, utils
 from scipy.special import huber
 
@@ -27,7 +28,7 @@ class FetchEnv(robot_env.RobotEnv):
         self, model_path, n_substeps, gripper_extra_height, block_gripper,
         has_object, target_in_the_air, target_offset, obj_range, target_range,
         distance_threshold, initial_qpos, reward_type, reward_params=None, explicit_goal_distance=False,
-        has_rotating_platform=False,
+        has_rotating_platform=False, has_button=False,
     ):
         """Initializes a new Fetch environment.
 
@@ -58,6 +59,9 @@ class FetchEnv(robot_env.RobotEnv):
         self.reward_params = reward_params
         self.explicit_goal_distance = explicit_goal_distance
         self.has_rotating_platform = has_rotating_platform
+        self.has_button = has_button
+        self._button_pressed = False
+        self._object_xy_pos_to_sync = None
 
         if isinstance(obj_range, Sequence):
             assert len(obj_range) == 2, obj_range[0] <= obj_range[1]
@@ -70,7 +74,7 @@ class FetchEnv(robot_env.RobotEnv):
 
         xml_format = None
         if 'pick_and_place.xml' in model_path:
-            xml_format = dict(rotating_platform="")
+            xml_format = dict(rotating_platform="", button="")
             if has_rotating_platform:
                 initial_qpos['rotating_platform_joint'] = -0.75
                 xml_format['rotating_platform'] = """
@@ -87,10 +91,67 @@ class FetchEnv(robot_env.RobotEnv):
                           size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
                 </body>
                 """
+            if has_button:
+                xml_format['button'] = """
+                <body name="button" pos="-0.15 0 0.22">
+                    <inertial pos="0 0 0" mass="2" diaginertia="0.1 0.1 0.1" />
+                    <geom pos="0 0 0" rgba="0 0.5 0 1" size="0.05 0.05 0.01" type="box"/>
+                    <geom name="button_geom" pos="0 0 0.01" rgba="1 0 0 1" size="0.02 0.02 0.01" type="box"/>
+                </body>
+                """
 
         super(FetchEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
             initial_qpos=initial_qpos, xml_format=xml_format)
+
+    def is_pressing_button(self):
+        if not self.has_button:
+            return False
+
+        sim = self.sim
+        for i in range(sim.data.ncon):
+
+            contact = sim.data.contact[i]
+            body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
+            body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
+            geom_name_1 = sim.model.geom_id2name(contact.geom1)
+            geom_name_2 = sim.model.geom_id2name(contact.geom2)
+
+            if 'robot0:' in body_name_1 and 'button_geom' == geom_name_2 or \
+               'robot0:' in body_name_2 and 'button_geom' == geom_name_1:
+                return True
+
+        return False
+
+    def sync_object_init_pos(self, pos: np.ndarray, wrt_table=False, now=False):
+        assert pos.size == 2
+        if wrt_table:
+            pose = tf.apply_tf(
+                np.r_[pos, 0., 1., 0., 0., 0.],
+                self.get_table_surface_pose()
+            )
+            self._object_xy_pos_to_sync = pose[:2]
+        else:
+            self._object_xy_pos_to_sync = pos.copy()
+
+        if now:
+            object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+            object_qpos[:2] = self._object_xy_pos_to_sync
+            self.sim.data.set_joint_qpos('object0:joint', object_qpos)
+            self.sim.forward()
+
+    def sync_goal(self, goal: np.ndarray, wrt_table=False):
+        goal = goal.copy()
+        if wrt_table:
+            if goal.size == 3:
+                goal = np.r_[goal, 1., 0., 0., 0.]
+            goal = tf.apply_tf(
+                goal,
+                self.get_table_surface_pose()
+            )
+            self.goal = goal[:3]
+        else:
+            self.goal = goal[:3]
 
     def get_table_surface_pose(self):
         pose = np.r_[
@@ -137,6 +198,11 @@ class FetchEnv(robot_env.RobotEnv):
                 ))
 
         return contact_points
+
+    def _reset_button(self):
+        if self.has_button:
+            self._button_pressed = False
+            self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (-0.25, 0.0, 0.21)
 
     # GoalEnv methods
     # ----------------------------
@@ -242,6 +308,10 @@ class FetchEnv(robot_env.RobotEnv):
         utils.mocap_set_action(self.sim, action)
 
     def _get_obs(self):
+
+        if self.is_pressing_button():
+            self._did_press_button()
+
         # positions
         grip_pos = self.sim.data.get_site_xpos('robot0:grip')
         dt = self.sim.nsubsteps * self.sim.model.opt.timestep
@@ -314,18 +384,34 @@ class FetchEnv(robot_env.RobotEnv):
             while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < range_min:
                 object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(-range_max, range_max, size=2)
 
+            self._object_xy_pos_to_sync = object_xpos.copy()
             object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
 
             if self.has_rotating_platform:
                 object_qpos[2] += 0.020
                 object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
+            elif self.has_button:
+                object_qpos[:2] = 1.530, 0.420
             else:
                 object_qpos[:2] = object_xpos
 
             self.sim.data.set_joint_qpos('object0:joint', object_qpos)
 
+        self._reset_button()
         self.sim.forward()
         return True
+
+    def _did_press_button(self):
+        if self._button_pressed:
+            return
+        self._button_pressed = True
+
+        # reset object position
+        self.sync_object_init_pos(self._object_xy_pos_to_sync, now=True)
+
+        # hide button away
+        self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (2., 2., 2.)
+        self.sim.forward()
 
     def _sample_goal(self):
         if self.has_object:

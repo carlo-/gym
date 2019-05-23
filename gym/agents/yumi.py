@@ -201,7 +201,29 @@ class YumiConstrainedAgent(BaseAgent):
         object_rel_pos = obs['observation'][24:27]
         c_points = self._raw_env.sim_env.get_object_contact_points()
 
-        if self._raw_env.sim_env.has_rotating_platform:
+        # button_tf = tf.get_tf(
+        #     np.r_[self._raw_env.sim.data.get_geom_xpos('button_geom'), 1., 0., 0., 0.],
+        #     self._raw_env.get_table_surface_pose()
+        # )
+        # print('button_tf', button_tf)
+
+        if self._raw_env.sim_env.has_button and self._phase < 2:
+
+            if np.linalg.norm(object_pos) > 0.55:
+                button_pos = self._raw_env.sim.data.get_geom_xpos('button_geom')
+                tf.render_pose(np.r_[button_pos, 1., 0., 0., 0.], self._raw_env.viewer)
+                err = button_pos - grasp_center_pos
+                u[0] = -1.
+                u[1:4] = err * 5.0
+            else:
+                u[0] = 0.
+                u[3] = 0.5
+                self._phase_steps += 1
+                if self._phase_steps > 5:
+                    self._phase = 2
+                    self._phase_steps = 0
+
+        elif self._raw_env.sim_env.has_rotating_platform:
 
             if np.linalg.norm(object_pos[:2]) > 0.12: # FIXME
                 far_end_pose = np.r_[

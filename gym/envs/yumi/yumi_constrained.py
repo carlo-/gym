@@ -64,6 +64,9 @@ class YumiConstrainedEnv(gym.GoalEnv):
     # Shortcuts
     # ----------------------------
 
+    def sync_object_init_pos(self, pos: np.ndarray, wrt_table=False, now=False):
+        self.sim_env.sync_object_init_pos(pos, wrt_table=wrt_table, now=now)
+
     @property
     def viewer(self):
         return self.sim_env.viewer
@@ -143,14 +146,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
         )
 
     def get_table_surface_pose(self):
-        pose = np.r_[
-            self.sim.data.get_body_xpos('table'),
-            self.sim.data.get_body_xquat('table'),
-        ]
-        geom = self.sim.model.geom_name2id('table')
-        size = self.sim.model.geom_size[geom].copy()
-        pose[2] += size[2]
-        return pose
+        return self.sim_env.get_table_surface_pose()
 
     def _unpack_action(self, action):
         dist_between_grippers = action[0]
@@ -189,13 +185,18 @@ class YumiConstrainedEnv(gym.GoalEnv):
         self.sim_env._set_sim_state(qpos, qvel)
 
         object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+        self.sim_env._object_xy_pos_to_sync = self.np_random.uniform(*self.sim_env._obj_init_bounds)
         if self.sim_env.has_rotating_platform:
             object_qpos[2] += 0.020
             object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
+        elif self.sim_env.has_button:
+            object_qpos[:2] = 0.375, -0.476
         elif self.sim_env.randomize_initial_object_pos:
             # Randomize initial position of object.
-            object_qpos[:2] = self.np_random.uniform(*self.sim_env._obj_init_bounds)
+            object_qpos[:2] = self.sim_env._object_xy_pos_to_sync.copy()
         self.sim.data.set_joint_qpos('object0:joint', object_qpos)
+
+        self.sim_env._reset_button()
 
     # Env methods
     # ----------------------------
@@ -296,6 +297,9 @@ class YumiConstrainedEnv(gym.GoalEnv):
         return (d < self.distance_threshold).astype(np.float32)
 
     def _get_obs(self):
+
+        if self.sim_env.is_pressing_button():
+            self.sim_env._did_press_button()
 
         grippers_pos = np.r_[self.get_gripper_pos('l'), self.get_gripper_pos('r')]
         grippers_velp = np.r_[self.get_gripper_velp('l'), self.get_gripper_velp('r')]

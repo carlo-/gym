@@ -5,7 +5,7 @@ import itertools as it
 import numpy as np
 import gym
 from gym.envs.robotics import FetchEnv
-from gym.agents.fetch import FetchPickAndPlaceAgent
+from gym.agents.fetch import FetchPickAndPlaceAgent, FetchPushAgent
 from gym.utils.mjviewer import add_selection_logger
 
 from playground.utils import wait_for_key
@@ -50,7 +50,8 @@ def main():
         'FetchPickAndPlaceDense-v1',
         reward_params=dict(stepped=True),
         # explicit_goal_distance=True,
-        has_rotating_platform=True,
+        has_rotating_platform=False,
+        has_button=True,
     )
     raw_env = env.unwrapped # type: FetchEnv
     sim = raw_env.sim
@@ -62,7 +63,8 @@ def main():
     # p.start()
     selected_action = np.zeros(4)
 
-    agent = FetchPickAndPlaceAgent(env)
+    # agent = FetchPickAndPlaceAgent(env)
+    agent = FetchPushAgent(env)
 
     while True:
 

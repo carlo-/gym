@@ -4,7 +4,7 @@ from enum import Enum
 
 import mujoco_py
 import numpy as np
-from gym.utils import EzPickle
+from gym.utils import EzPickle, transformations as tf
 from gym.envs.robotics.robot_env import RobotEnv
 from gym.envs.robotics.utils import reset_mocap2body_xpos, reset_mocap_welds
 
@@ -58,7 +58,7 @@ class YumiEnv(RobotEnv):
 
     def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
                  ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None, object_on_table=False,
-                 has_rotating_platform=False):
+                 has_rotating_platform=False, has_button=True):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -81,6 +81,7 @@ class YumiEnv(RobotEnv):
         self.ignore_target_rotation = ignore_target_rotation
         self.randomize_initial_object_pos = randomize_initial_object_pos
         self.has_rotating_platform = has_rotating_platform
+        self.has_button = has_button
 
         self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
         self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
@@ -91,6 +92,8 @@ class YumiEnv(RobotEnv):
         if task == YumiTask.LIFT_ABOVE_TABLE:
             self._obj_init_bounds = (np.r_[-0.05, -0.05], np.r_[0.05, 0.05])
 
+        self._button_pressed = False
+        self._object_xy_pos_to_sync = None
         self._gripper_r_joint_idx = None
         self._gripper_l_joint_idx = None
         self._arm_r_joint_idx = None
@@ -169,8 +172,18 @@ class YumiEnv(RobotEnv):
             </body>
             """
 
+        button_xml = ""
+        if has_button:
+            button_xml = """
+            <body name="button" pos="-0.15 0 0.02">
+                <inertial pos="0 0 0" mass="2" diaginertia="0.1 0.1 0.1" />
+                <geom pos="0 0 0" rgba="0 0.5 0 1" size="0.05 0.05 0.01" type="box"/>
+                <geom name="button_geom" pos="0 0 0.01" rgba="1 0 0 1" size="0.02 0.02 0.01" type="box"/>
+            </body>
+            """
+
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
-        xml_format = dict(object=object_xml, rotating_platform=rot_platform_xml)
+        xml_format = dict(object=object_xml, rotating_platform=rot_platform_xml, button=button_xml)
         super(YumiEnv, self).__init__(model_path=model_path, n_substeps=5,
                                       n_actions=n_actions, initial_qpos=None, xml_format=xml_format)
 
@@ -199,6 +212,52 @@ class YumiEnv(RobotEnv):
         self.sim.set_state(prev_s)
         arm_target_qpos = target_qpos[getattr(self, f'_arm_{arm}_joint_idx')]
         return arm_target_qpos
+
+    def is_pressing_button(self):
+        if not self.has_button:
+            return False
+
+        sim = self.sim
+        for i in range(sim.data.ncon):
+
+            contact = sim.data.contact[i]
+            body_name_1 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom1])
+            body_name_2 = sim.model.body_id2name(sim.model.geom_bodyid[contact.geom2])
+            geom_name_1 = sim.model.geom_id2name(contact.geom1)
+            geom_name_2 = sim.model.geom_id2name(contact.geom2)
+
+            if 'gripper' in body_name_1 and 'button_geom' == geom_name_2 or \
+               'gripper' in body_name_2 and 'button_geom' == geom_name_1:
+                return True
+
+        return False
+
+    def get_table_surface_pose(self):
+        pose = np.r_[
+            self.sim.data.get_body_xpos('table'),
+            self.sim.data.get_body_xquat('table'),
+        ]
+        geom = self.sim.model.geom_name2id('table')
+        size = self.sim.model.geom_size[geom].copy()
+        pose[2] += size[2]
+        return pose
+
+    def sync_object_init_pos(self, pos: np.ndarray, wrt_table=False, now=False):
+        assert pos.size == 2
+        if wrt_table:
+            pose = tf.apply_tf(
+                np.r_[pos, 0., 1., 0., 0., 0.],
+                self.get_table_surface_pose()
+            )
+            self._object_xy_pos_to_sync = pose[:2]
+        else:
+            self._object_xy_pos_to_sync = pos.copy()
+
+        if now:
+            object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
+            object_qpos[:2] = self._object_xy_pos_to_sync
+            self.sim.data.set_joint_qpos('object0:joint', object_qpos)
+            self.sim.forward()
 
     def get_object_contact_points(self, other_body='gripper'):
         if not self.has_object:
@@ -235,6 +294,11 @@ class YumiEnv(RobotEnv):
                 ))
 
         return contact_points
+
+    def _reset_button(self):
+        if self.has_button:
+            self._button_pressed = False
+            self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (-0.25, 0.0, 0.02)
 
     # GoalEnv methods
     # ----------------------------
@@ -303,16 +367,32 @@ class YumiEnv(RobotEnv):
                 return False
 
         if self.has_object:
+            self._object_xy_pos_to_sync = self.np_random.uniform(*self._obj_init_bounds)
             object_qpos = self.sim.data.get_joint_qpos('object0:joint').copy()
             if self.has_rotating_platform:
                 object_qpos[2] += 0.020
                 object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
+            elif self.has_button:
+                object_qpos[:2] = 0.375, -0.476
             elif self.randomize_initial_object_pos:
                 # Randomize initial position of object.
-                object_qpos[:2] = self.np_random.uniform(*self._obj_init_bounds)
+                object_qpos[:2] = self._object_xy_pos_to_sync.copy()
             self.sim.data.set_joint_qpos('object0:joint', object_qpos)
 
+        self._reset_button()
         return True
+
+    def _did_press_button(self):
+        if self._button_pressed:
+            return
+        self._button_pressed = True
+
+        # reset object position
+        self.sync_object_init_pos(self._object_xy_pos_to_sync, now=True)
+
+        # hide button away
+        self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (2., 2., 2.)
+        self.sim.forward()
 
     def _get_obs(self):
 
@@ -331,6 +411,9 @@ class YumiEnv(RobotEnv):
         gripper_r_to_obj = np.zeros(0)
 
         dt = self.sim.nsubsteps * self.sim.model.opt.timestep
+
+        if self.is_pressing_button():
+            self._did_press_button()
 
         if self.has_left_arm:
             arm_l_qpos = self.sim.data.qpos[self._arm_l_joint_idx]

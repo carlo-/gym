@@ -4,11 +4,13 @@ import gym
 from gym.agents.base import BaseAgent
 from gym.utils import transformations as tf
 
+
 class FetchPickAndPlaceAgent(BaseAgent):
 
     def __init__(self, env, **kwargs):
         super(FetchPickAndPlaceAgent, self).__init__(env, **kwargs)
         self._phase = -1
+        self._phase_steps = 0
         self._goal = None
 
     def predict(self, obs, **kwargs):
@@ -20,6 +22,7 @@ class FetchPickAndPlaceAgent(BaseAgent):
         if self._goal is None or np.any(goal != self._goal):
             self._goal = goal.copy()
             self._phase = -1
+            self._phase_steps = 0
 
         grasp_center_pos = obs['observation'][:3]
         object_pos = obs['observation'][3:6]
@@ -31,9 +34,26 @@ class FetchPickAndPlaceAgent(BaseAgent):
         raw_env = self._env.unwrapped
         table_tf = raw_env.get_table_surface_pose()
 
-        print('HERE', np.linalg.norm(object_pos[:2] - table_tf[:2]))
+        if raw_env.has_button and self._phase < 2:
+            u = np.zeros(4)
+            if np.linalg.norm(object_pos[:2] - table_tf[:2]) > 0.38:
+                button_pos = raw_env.sim.data.get_geom_xpos('button_geom')
+                tf.render_pose(np.r_[button_pos, 1., 0., 0., 0.], raw_env.viewer)
+                err = button_pos - grasp_center_pos
+                u[3] = -1.
+                u[:3] = err * 5.0
+                return u
+            else:
+                u[3] = 0.
+                u[2] = 0.5
+                self._phase_steps += 1
+                if self._phase_steps > 5:
+                    self._phase = 2
+                    self._phase_steps = 0
+                else:
+                    return u
 
-        if raw_env.has_rotating_platform:
+        elif raw_env.has_rotating_platform:
 
             if np.linalg.norm(object_pos[:2] - table_tf[:2]) > 0.22: # FIXME
                 far_end_pose = np.r_[
@@ -131,7 +151,7 @@ class FetchPushAgent(BaseAgent):
     def __init__(self, env, **kwargs):
         super(FetchPushAgent, self).__init__(env, **kwargs)
         self._goal = None
-        self._phase = 0
+        self._phase = -1
         self._last_disp = None
 
     def predict(self, obs, **kwargs):
@@ -139,12 +159,35 @@ class FetchPushAgent(BaseAgent):
         goal = obs['desired_goal']
         if self._goal is None or np.any(goal != self._goal):
             self._goal = goal.copy()
-            self._phase = 0
+            self._phase = -1
             self._last_disp = None
 
         grp_pos = obs['observation'][:3]
         object_pos = obs['observation'][3:6]
         # object_rel_pos = obs['observation'][6:9]
+
+        raw_env = self._env.unwrapped
+        table_tf = raw_env.get_table_surface_pose()
+
+        # button_tf = tf.get_tf(
+        #     np.r_[raw_env.sim.data.get_geom_xpos('button_geom'), 1., 0., 0., 0.],
+        #     table_tf
+        # )
+        # print('button_tf', button_tf)
+
+        if raw_env.has_button and self._phase < 0:
+            u = np.zeros(4)
+            if np.linalg.norm(object_pos[:2] - table_tf[:2]) > 0.38:
+                button_pos = raw_env.sim.data.get_geom_xpos('button_geom')
+                tf.render_pose(np.r_[button_pos, 1., 0., 0., 0.], raw_env.viewer)
+                err = button_pos - grp_pos
+                u[3] = -1.
+                u[:3] = err * 5.0
+                return u
+            else:
+                self._phase = 0
+        elif self._phase < 0:
+            self._phase = 0
 
         disp = self._goal[:2] - object_pos[:2]
         if self._last_disp is None or np.linalg.norm(disp) > 0.05:
