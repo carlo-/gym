@@ -298,7 +298,7 @@ class YumiEnv(RobotEnv):
     def _reset_button(self):
         if self.has_button:
             self._button_pressed = False
-            self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (0.13, 0.0, 0.02)
+            self.sim.model.body_pos[self.sim.model.body_name2id("button"), :] = (0.0, 0.0, 0.02)
 
     # GoalEnv methods
     # ----------------------------
