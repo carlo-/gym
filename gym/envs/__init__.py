@@ -329,7 +329,7 @@ for reward_type in ['sparse', 'dense']:
         id='FetchPickAndPlaceLong{}-v1'.format(suffix),
         entry_point='gym.envs.robotics:FetchPickAndPlaceEnv',
         kwargs=kwargs,
-        max_episode_steps=100,
+        max_episode_steps=80,
     )
 
     register(
@@ -545,7 +545,7 @@ register(
 register(
     id='YumiConstrainedLong-v2',
     entry_point='gym.envs.yumi:YumiConstrainedEnv',
-    max_episode_steps=100,
+    max_episode_steps=80,
     kwargs=dict(mocap_ctrl=True)
 )
 
