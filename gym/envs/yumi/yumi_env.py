@@ -58,7 +58,7 @@ class YumiEnv(RobotEnv):
 
     def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
                  ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None, object_on_table=False,
-                 has_rotating_platform=False, has_button=True, extended_bounds=False):
+                 has_rotating_platform=False, has_button=False, extended_bounds=False):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
