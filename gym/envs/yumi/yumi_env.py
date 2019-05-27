@@ -58,7 +58,7 @@ class YumiEnv(RobotEnv):
 
     def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
                  ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None, object_on_table=False,
-                 has_rotating_platform=False, has_button=True):
+                 has_rotating_platform=False, has_button=True, extended_bounds=False):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -91,6 +91,10 @@ class YumiEnv(RobotEnv):
 
         if task == YumiTask.LIFT_ABOVE_TABLE:
             self._obj_init_bounds = (np.r_[-0.05, -0.05], np.r_[0.05, 0.05])
+
+        if extended_bounds:
+            self._obj_target_bounds = (np.r_[-0.24, -0.28, 0.05], np.r_[0.18, 0.28, 0.25])
+            self._obj_init_bounds = (np.r_[-0.25, -0.21], np.r_[0.12, 0.21])
 
         self._button_pressed = False
         self._object_xy_pos_to_sync = None

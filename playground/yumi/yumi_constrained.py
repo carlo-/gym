@@ -14,6 +14,67 @@ def test_fps(steps=10_000):
     test_env_fps(gym.make('YumiConstrained-v1'), steps)
 
 
+def test_reachability(render=False):
+
+    env = gym.make('YumiConstrainedLong-v2', reward_type='sparse', render_poses=False,
+                   has_rotating_platform=False, has_button=False, extended_bounds=True)
+
+    if render:
+        raw_env = env.unwrapped
+        sim = raw_env.sim
+        env.render()
+        add_selection_logger(raw_env.viewer, sim)
+
+    agent = YumiConstrainedAgent(env)
+
+    goal_reach = np.zeros((2, 3))
+    goal_reach[0] = np.inf
+    goal_reach[1] = -np.inf
+    init_reach = goal_reach.copy()
+
+    done = True
+    obs = init_pos = None
+    n_steps = 0
+    unreachable_eps = 0
+    tot_eps = 0
+
+    for i in it.count():
+        if done:
+            obs = env.reset()
+            init_pos = obs['achieved_goal'].copy()
+            n_steps = 0
+            tot_eps += 1
+
+        u = agent.predict(obs)
+
+        obs, rew, done, _ = env.step(u)
+        n_steps += 1
+
+        if render:
+            env.render()
+
+        if rew == 0.0:
+
+            done = True
+            if n_steps >= 10:
+
+                goal = obs['desired_goal'].copy()
+                goal_reach[0] = np.minimum(goal_reach[0], goal)
+                goal_reach[1] = np.maximum(goal_reach[1], goal)
+
+                init_reach[0] = np.minimum(init_reach[0], init_pos)
+                init_reach[1] = np.maximum(init_reach[1], init_pos)
+
+        elif done:
+            unreachable_eps += 1
+
+        if done:
+            print(goal_reach)
+            print(init_reach)
+            print(unreachable_eps / tot_eps)
+            print()
+
+
 def main():
 
     env = gym.make('YumiConstrained-v2', reward_type='sparse', render_poses=False,
@@ -80,4 +141,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    test_reachability(render=False)
