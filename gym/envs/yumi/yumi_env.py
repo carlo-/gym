@@ -41,10 +41,11 @@ OBJECTS = dict(
     egg=dict(type='ellipsoid', size='0.03 0.03 0.04'),
     small_box=dict(type='box', size='0.022 0.022 0.022'),
     box=dict(type='box', size='0.03 0.03 0.03'),
-    sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
-    small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
+    # sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
+    # small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
     # fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
-    fetch_box=dict(type='box', size='0.025 0.025 0.055', mass=2.0), # FIXME
+    fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
+    fetch_sphere=dict(type='sphere', size='0.025 0.025 0.025', mass=5.0),
 )
 
 

@@ -29,7 +29,8 @@ def _mocap_set_action(sim, action):
 class YumiConstrainedEnv(gym.GoalEnv):
 
     def __init__(self, *, reward_type='dense', rotation_ctrl=False, fingers_ctrl=False, distance_threshold=0.05,
-                 randomize_initial_object_pos=True, mocap_ctrl=False, render_poses=True, **kwargs):
+                 randomize_initial_object_pos=True, mocap_ctrl=False, render_poses=True,
+                 object_id='fetch_box', **kwargs):
         super(YumiConstrainedEnv, self).__init__()
 
         self.metadata = {
@@ -38,7 +39,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
 
         self.sim_env = YumiEnv(
             arm='both', block_gripper=False, reward_type=reward_type, task=YumiTask.PICK_AND_PLACE_OBJECT,
-            object_id='fetch_box', randomize_initial_object_pos=randomize_initial_object_pos, **kwargs,
+            object_id=object_id, randomize_initial_object_pos=randomize_initial_object_pos, **kwargs,
         )
         self.mocap_ctrl = mocap_ctrl
         self.reward_type = reward_type

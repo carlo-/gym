@@ -52,8 +52,8 @@ def main():
         # explicit_goal_distance=True,
         has_rotating_platform=False,
         has_button=False,
-        object_id='original',
-        has_object_box=True,
+        object_id='sphere',
+        has_object_box=False,
     )
     raw_env = env.unwrapped # type: FetchEnv
     sim = raw_env.sim

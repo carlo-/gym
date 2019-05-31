@@ -78,7 +78,7 @@ def test_reachability(render=False):
 def main():
 
     env = gym.make('YumiConstrained-v2', reward_type='sparse', render_poses=False,
-                   has_rotating_platform=False, has_button=True)
+                   has_rotating_platform=False, has_button=False, has_object_box=False, object_id="fetch_sphere")
     raw_env = env.unwrapped
     sim = raw_env.sim
     env.render()
@@ -141,4 +141,4 @@ def main():
 
 
 if __name__ == '__main__':
-    test_reachability(render=False)
+    main()

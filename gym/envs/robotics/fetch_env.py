@@ -23,6 +23,7 @@ def huber_loss(a, b):
 OBJECTS = dict(
     original=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
     fetch_box=dict(type='box', size='0.025 0.025 0.055', mass=2.0), # FIXME
+    sphere=dict(type='sphere', size='0.025 0.025 0.055', mass=5.0),
 )
 
 
