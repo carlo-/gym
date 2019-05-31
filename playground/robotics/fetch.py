@@ -51,7 +51,9 @@ def main():
         reward_params=dict(stepped=True),
         # explicit_goal_distance=True,
         has_rotating_platform=False,
-        has_button=True,
+        has_button=False,
+        object_id='original',
+        has_object_box=True,
     )
     raw_env = env.unwrapped # type: FetchEnv
     sim = raw_env.sim

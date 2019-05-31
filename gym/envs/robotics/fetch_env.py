@@ -20,6 +20,12 @@ def huber_loss(a, b):
     return np.sum(huber(delta, r), axis=-1)
 
 
+OBJECTS = dict(
+    original=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
+    fetch_box=dict(type='box', size='0.025 0.025 0.055', mass=2.0), # FIXME
+)
+
+
 class FetchEnv(robot_env.RobotEnv):
     """Superclass for all Fetch environments.
     """
@@ -28,7 +34,7 @@ class FetchEnv(robot_env.RobotEnv):
         self, model_path, n_substeps, gripper_extra_height, block_gripper,
         has_object, target_in_the_air, target_offset, obj_range, target_range,
         distance_threshold, initial_qpos, reward_type, reward_params=None, explicit_goal_distance=False,
-        has_rotating_platform=False, has_button=False,
+        has_rotating_platform=False, has_button=False, object_id=None, has_object_box=False,
     ):
         """Initializes a new Fetch environment.
 
@@ -59,7 +65,9 @@ class FetchEnv(robot_env.RobotEnv):
         self.reward_params = reward_params
         self.explicit_goal_distance = explicit_goal_distance
         self.has_rotating_platform = has_rotating_platform
+        self.has_object_box = has_object_box
         self.has_button = has_button
+        self.object_id = object_id
         self._button_pressed = False
         self._object_xy_pos_to_sync = None
 
@@ -74,7 +82,7 @@ class FetchEnv(robot_env.RobotEnv):
 
         xml_format = None
         if 'pick_and_place.xml' in model_path:
-            xml_format = dict(rotating_platform="", button="")
+            xml_format = dict(rotating_platform="", button="", object_box="", exclude_contacts="")
             if has_rotating_platform:
                 initial_qpos['rotating_platform_joint'] = -0.75
                 xml_format['rotating_platform'] = """
@@ -91,6 +99,22 @@ class FetchEnv(robot_env.RobotEnv):
                           size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
                 </body>
                 """
+
+            if has_object_box:
+                xml_format['object_box'] = """
+                <body name="object_box" pos="0 0 0.25">
+                    <geom pos="0 0.035 0" rgba="0 0.5 0 1" size="0.1 0.005 0.05" type="box" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                    <geom pos="0 -0.035 0" rgba="1 0 0 1" size="0.1 0.005 0.05" type="box" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                    <site name="object_box:near_end" pos="-0.08 0 -0.03"
+                          size="0.02 0.02 0.02" rgba="0 0 1 0.5" type="sphere"/>
+                </body>
+                """
+                xml_format['exclude_contacts'] = """
+                <exclude body1="robot0:r_gripper_finger_link" body2="object_box"></exclude>
+                <exclude body1="robot0:l_gripper_finger_link" body2="object_box"></exclude>
+                <exclude body1="robot0:gripper_link" body2="object_box"></exclude>
+                """
+
             if has_button:
                 xml_format['button'] = """
                 <body name="button" pos="-0.15 0 0.22">
@@ -99,6 +123,28 @@ class FetchEnv(robot_env.RobotEnv):
                     <geom name="button_geom" pos="0 0 0.01" rgba="1 0 0 1" size="0.02 0.02 0.01" type="box"/>
                 </body>
                 """
+
+            if object_id is None or object_id == 'original':
+                object_xml = """
+                <body name="object0" pos="0.025 0.025 0.025">
+                    <joint name="object0:joint" type="free" damping="0.01"></joint>
+                    <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="2"></geom>
+                    <site name="object0" pos="0 0 0" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"></site>
+                </body>
+                """
+            else:
+                obj = dict(OBJECTS[object_id])
+                if 'mass' not in obj.keys():
+                    obj['mass'] = 0.2
+                props = " ".join([f'{k}="{v}"' for k, v in obj.items()])
+                object_xml = f"""
+                <body name="object0" pos="0.025 0.025 0.025">
+                    <joint name="object0:joint" type="free" damping="0.01"/>
+                    <geom {props} condim="4" name="object0_base" material="block_mat" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                    <site name="object0" pos="0 0 0" size="0.02 0.02 0.02" rgba="0 0 1 1" type="sphere"/>
+                </body>
+                """
+            xml_format['object'] = object_xml
 
         super(FetchEnv, self).__init__(
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
@@ -392,6 +438,8 @@ class FetchEnv(robot_env.RobotEnv):
                 object_qpos[:2] = self.sim.data.get_site_xpos('rotating_platform:far_end')[:2]
             elif self.has_button:
                 object_qpos[:2] = 1.530, 0.420
+            elif self.has_object_box:
+                object_qpos[:2] = self.sim.data.get_site_xpos('object_box:near_end')[:2]
             else:
                 object_qpos[:2] = object_xpos
 

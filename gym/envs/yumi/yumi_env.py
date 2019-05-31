@@ -43,7 +43,8 @@ OBJECTS = dict(
     box=dict(type='box', size='0.03 0.03 0.03'),
     sphere=dict(type='ellipsoid', size='0.028 0.028 0.028'),
     small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
-    fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
+    # fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
+    fetch_box=dict(type='box', size='0.025 0.025 0.055', mass=2.0), # FIXME
 )
 
 
@@ -58,7 +59,7 @@ class YumiEnv(RobotEnv):
 
     def __init__(self, *, arm, block_gripper, reward_type, task: YumiTask, distance_threshold=0.05,
                  ignore_target_rotation=True, randomize_initial_object_pos=False, object_id=None, object_on_table=False,
-                 has_rotating_platform=False, has_button=False, extended_bounds=False):
+                 has_rotating_platform=False, has_button=False, extended_bounds=False, has_object_box=False):
 
         if arm not in ['right', 'left', 'both']:
             raise ValueError
@@ -82,6 +83,7 @@ class YumiEnv(RobotEnv):
         self.randomize_initial_object_pos = randomize_initial_object_pos
         self.has_rotating_platform = has_rotating_platform
         self.has_button = has_button
+        self.has_object_box = has_object_box
 
         self._table_safe_bounds = (np.r_[-0.20, -0.43], np.r_[0.35, 0.43])
         self._target_bounds_l = (np.r_[-0.20, 0.07, 0.05], np.r_[0.35, 0.43, 0.6])
@@ -186,8 +188,17 @@ class YumiEnv(RobotEnv):
             </body>
             """
 
+        object_box_xml = ""
+        if has_object_box:
+            object_box_xml = """
+            <body name="object_box" pos="0 0 0.06">
+                <geom pos="0 0.07 0" rgba="0 0.5 0 1" size="0.1 0.005 0.05" type="box" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+                <geom pos="0 -0.07 0" rgba="1 0 0 1" size="0.1 0.005 0.05" type="box" solimp="0.99 0.99 0.01" solref="0.01 1"/>
+            </body>
+            """
+
         model_path = os.path.join(os.path.dirname(__file__), 'assets', f'yumi_{arm}.xml')
-        xml_format = dict(object=object_xml, rotating_platform=rot_platform_xml, button=button_xml)
+        xml_format = dict(object=object_xml, rotating_platform=rot_platform_xml, button=button_xml, object_box=object_box_xml)
         super(YumiEnv, self).__init__(model_path=model_path, n_substeps=5,
                                       n_actions=n_actions, initial_qpos=None, xml_format=xml_format)
 
