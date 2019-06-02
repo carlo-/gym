@@ -45,7 +45,7 @@ OBJECTS = dict(
     # small_sphere=dict(type='ellipsoid', size='0.024 0.024 0.024'),
     # fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
     fetch_box=dict(type='box', size='0.025 0.025 0.025', mass=2.0),
-    fetch_sphere=dict(type='sphere', size='0.025 0.025 0.025', mass=5.0),
+    fetch_sphere=dict(type='sphere', size='0.025 0.025 0.025', mass=2.0, friction="1 0.001 0.0001"),
 )
 
 

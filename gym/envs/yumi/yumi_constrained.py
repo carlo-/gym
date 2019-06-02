@@ -54,6 +54,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
             n_actions += 2 # # dist between fingers, (left, right) grippers (2)
         self.rotation_ctrl_enabled = rotation_ctrl
         self.fingers_ctrl_enabled = fingers_ctrl
+        self.fingers_default_to_open = False
 
         self.action_space = spaces.Box(-1., 1., shape=(n_actions,), dtype='float32')
         self.observation_space = spaces.Dict(dict(
@@ -163,7 +164,7 @@ class YumiConstrainedEnv(gym.GoalEnv):
         if self.fingers_ctrl_enabled:
             l_fingers_ctrl, r_fingers_ctrl = action[offset:offset+2]
         else:
-            l_fingers_ctrl = r_fingers_ctrl = -1.
+            l_fingers_ctrl = r_fingers_ctrl = -1. if self.fingers_default_to_open else 1.
 
         return (
             dist_between_grippers, grasp_center_pos_delta,
