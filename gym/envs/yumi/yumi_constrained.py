@@ -261,13 +261,14 @@ class YumiConstrainedEnv(gym.GoalEnv):
         reward = self.compute_reward(obs['achieved_goal'], self.goal, info)
         return obs, reward, done, info
 
-    def render(self, mode='human', keep_markers=False):
+    def render(self, mode='human', keep_markers=False, rgb_options=None):
         markers = []
         if keep_markers:
             markers = copy.deepcopy(self.viewer._markers)
-        self.sim_env.render()
+        res = self.sim_env.render(mode=mode, rgb_options=rgb_options)
         for m in markers:
             self.viewer.add_marker(**m)
+        return res
 
     def reset(self):
         self._reset()

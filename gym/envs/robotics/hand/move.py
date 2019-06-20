@@ -338,13 +338,13 @@ class MovingHandEnv(hand_env.HandEnv, utils.EzPickle):
             self.height_offset = self.sim.data.get_site_xpos('object:center')[2]
 
     def _viewer_setup(self):
-        body_id = self.sim.model.body_name2id('robot0:forearm')
+        body_id = self.sim.model.body_name2id('table0') #'robot0:forearm')
         lookat = self.sim.data.body_xpos[body_id]
         for idx, value in enumerate(lookat):
             self.viewer.cam.lookat[idx] = value
-        self.viewer.cam.distance = 2.5
-        self.viewer.cam.azimuth = 132.
-        self.viewer.cam.elevation = -14.
+        self.viewer.cam.distance = 1.4
+        self.viewer.cam.azimuth = 180. #132.
+        self.viewer.cam.elevation = -38.
 
     def _reset_sim(self):
         reset_to_grasp_state = self.grasp_state_reset_p > self.np_random.uniform()
