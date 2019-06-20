@@ -126,7 +126,8 @@ class YumiSynchronizedAgent(BaseAgent):
 
     def reset(self, **kwargs):
         self._goal = None
-        self.yumi_agent.reset()
+        if hasattr(self.yumi_agent, 'reset'):
+            self.yumi_agent.reset()
         self.teacher_agent.reset()
         self.teacher_env.reset()
 
