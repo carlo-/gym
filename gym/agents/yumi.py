@@ -84,6 +84,68 @@ def _solve_qp_ik_pos(current_pose, target_pose, jac, joint_pos, joint_lims=None,
     return new_q
 
 
+class YumiSynchronizedAgent(BaseAgent):
+
+    def __init__(self, env, *, yumi_agent: BaseAgent, teacher_env, teacher_agent: BaseAgent,
+                 teacher_obj_name='object0', t_table_tf=None, **kwargs):
+        super(YumiSynchronizedAgent, self).__init__(env, **kwargs)
+        self._goal = None
+        self.yumi_agent = yumi_agent
+        self.teacher_env = teacher_env
+        self.teacher_agent = teacher_agent
+        self.teacher_obj_name = teacher_obj_name
+        self.yumi_env_version = 2
+        self.s_table_tf = env.unwrapped.get_table_surface_pose()
+        if t_table_tf is None:
+            self.t_table_tf = teacher_env.unwrapped.get_table_surface_pose()
+        else:
+            self.t_table_tf = t_table_tf.copy()
+
+    def _align_goal(self):
+
+        tf_to_goal = tf.get_tf(np.r_[self._goal, 1., 0., 0., 0.], self.s_table_tf)
+        t_goal_pose = tf.apply_tf(tf_to_goal, self.t_table_tf)
+
+        self.teacher_env.unwrapped.goal[:3] = t_goal_pose[:3]
+
+        if self._env.unwrapped.sim_env.has_button:
+            pos = self._env.unwrapped.sim_env._object_xy_pos_to_sync.copy()
+            self.teacher_env.unwrapped.sync_object_init_pos(pos, wrt_table=True, now=False)
+
+        elif not self._env.unwrapped.sim_env.has_rotating_platform:
+            tf_to_obj = tf.get_tf(self._env.unwrapped.get_object_pose(), self.s_table_tf)
+            t_obj_pose = tf.apply_tf(tf_to_obj, self.t_table_tf)
+
+            joint_name = self.teacher_obj_name + ":joint"
+            object_pos = self.teacher_env.unwrapped.sim.data.get_joint_qpos(joint_name).copy()
+            object_pos[:2] = t_obj_pose[:2]
+            self.teacher_env.unwrapped.sim.data.set_joint_qpos(joint_name, object_pos)
+            self.teacher_env.unwrapped.sim.forward()
+
+        self.teacher_agent.reset()
+
+    def reset(self, **kwargs):
+        self._goal = None
+        self.yumi_agent.reset()
+        self.teacher_agent.reset()
+        self.teacher_env.reset()
+
+    def predict(self, obs, **kwargs):
+
+        goal = obs['desired_goal']
+        if self._goal is None or np.any(goal != self._goal):
+            self.reset()
+            self._goal = goal.copy()
+            self._align_goal()
+
+        t_obs = self.teacher_env.unwrapped._get_obs()
+        t_u = self.teacher_agent.predict(t_obs)
+        t_obs, _, done, _ = self.teacher_env.step(t_u)
+
+        s_u = self.yumi_agent.predict(obs)
+        return s_u
+
+
 class YumiImitatorAgent(BaseAgent):
 
     def __init__(self, env, *, teacher_env, teacher_agent: BaseAgent, a_scaler, b_scaler, model,
